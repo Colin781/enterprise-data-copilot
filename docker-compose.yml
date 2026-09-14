@@ -1,0 +1,58 @@
+name: enterprise-data-copilot
+
+services:
+  platform-db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: ${PLATFORM_DB_NAME}
+      POSTGRES_USER: ${PLATFORM_DB_USER}
+      POSTGRES_PASSWORD: ${PLATFORM_DB_PASSWORD}
+    ports:
+      - "${PLATFORM_DB_PORT}:5432"
+    volumes:
+      - platform-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PLATFORM_DB_USER} -d ${PLATFORM_DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  business-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${BUSINESS_DB_NAME}
+      POSTGRES_USER: ${BUSINESS_DB_USER}
+      POSTGRES_PASSWORD: ${BUSINESS_DB_PASSWORD}
+      BUSINESS_DB_READONLY_USER: ${BUSINESS_DB_READONLY_USER:-northwind_reader}
+      BUSINESS_DB_READONLY_PASSWORD: ${BUSINESS_DB_READONLY_PASSWORD:-change-me-business-reader}
+    ports:
+      - "${BUSINESS_DB_PORT}:5432"
+    volumes:
+      - business-db-data:/var/lib/postgresql/data
+      - ./infra/docker/business-db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BUSINESS_DB_USER} -d ${BUSINESS_DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.2-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  platform-db-data:
+  business-db-data:
+  redis-data:

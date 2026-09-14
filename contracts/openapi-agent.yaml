@@ -1,0 +1,248 @@
+openapi: 3.1.0
+info:
+  title: Enterprise Data Copilot Agent API
+  version: 0.1.0
+  description: Internal API called only by the Java platform service.
+servers:
+  - url: http://localhost:8000
+paths:
+  /health:
+    get:
+      operationId: getAgentHealth
+      tags: [operations]
+      security: []
+      responses:
+        "200":
+          description: The agent process is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /internal/v1/runs:
+    post:
+      operationId: startAgentRun
+      tags: [runs]
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/Traceparent"
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/UserRole"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartRunRequest"
+      responses:
+        "202":
+          description: The run was accepted by the internal service boundary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartRunResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: service-token
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+    Traceparent:
+      name: traceparent
+      in: header
+      required: true
+      description: W3C Trace Context propagated by the Java platform service.
+      schema:
+        type: string
+        minLength: 55
+        maxLength: 255
+    TenantId:
+      name: X-Tenant-Id
+      in: header
+      required: true
+      description: Tenant identity asserted by the authenticated Java service.
+      schema:
+        type: string
+        format: uuid
+    UserId:
+      name: X-User-Id
+      in: header
+      required: true
+      description: User identity asserted by the authenticated Java service.
+      schema:
+        type: string
+        format: uuid
+    UserRole:
+      name: X-User-Role
+      in: header
+      required: true
+      description: User role asserted by the authenticated Java service.
+      schema:
+        type: string
+        enum: [ADMIN, ANALYST, VIEWER]
+  responses:
+    BadRequest:
+      description: The internal request is malformed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AgentError"
+    Unauthorized:
+      description: The service token or trusted identity claim is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AgentError"
+    Conflict:
+      description: The idempotency key conflicts with an earlier request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AgentError"
+    UnprocessableEntity:
+      description: The request violates an internal workflow input rule.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AgentError"
+    InternalError:
+      description: The agent service could not accept the run.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AgentError"
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [service, status, version, timestamp]
+      properties:
+        service:
+          type: string
+          const: agent-service
+        status:
+          type: string
+          const: UP
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    AnalysisJobStatus:
+      type: string
+      enum:
+        - CREATED
+        - PLANNING
+        - VALIDATING
+        - WAITING_APPROVAL
+        - RUNNING
+        - COMPLETED
+        - REJECTED
+        - FAILED
+        - CANCELLED
+    StartRunRequest:
+      type: object
+      additionalProperties: false
+      required: [job_id, data_source_id, question, requested_at]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        data_source_id:
+          type: string
+          format: uuid
+        question:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        requested_at:
+          type: string
+          format: date-time
+    StartRunResponse:
+      type: object
+      additionalProperties: false
+      required: [job_id, status, trace_id, accepted_at]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/AnalysisJobStatus"
+        trace_id:
+          type: string
+          minLength: 16
+          maxLength: 64
+        accepted_at:
+          type: string
+          format: date-time
+    AgentStep:
+      type: object
+      additionalProperties: false
+      required: [name, status, started_at]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        status:
+          type: string
+          enum: [STARTED, SUCCEEDED, FAILED]
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+    AgentDecision:
+      type: object
+      additionalProperties: false
+      required: [decision, reason_code]
+      properties:
+        decision:
+          type: string
+          enum: [ACCEPTED, REJECTED, WAITING_APPROVAL]
+        reason_code:
+          type: string
+          minLength: 1
+          maxLength: 80
+    AgentError:
+      type: object
+      additionalProperties: false
+      required: [code, message, trace_id, timestamp]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 80
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+        trace_id:
+          type: string
+          minLength: 16
+          maxLength: 64
+        timestamp:
+          type: string
+          format: date-time

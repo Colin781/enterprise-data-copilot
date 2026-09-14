@@ -1,0 +1,40 @@
+[project]
+name = "enterprise-data-copilot-agent"
+version = "0.1.0"
+description = "Internal AI workflow service for Enterprise Data Copilot"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "httpx>=0.28,<1",
+    "pydantic-settings>=2.7,<3",
+    "psycopg[binary]>=3.2,<4",
+    "sqlglot>=27,<29",
+    "uvicorn[standard]>=0.34,<1",
+]
+
+[dependency-groups]
+dev = [
+    "jsonschema[format]>=4.23,<5",
+    "openapi-spec-validator>=0.7,<1",
+    "pip>=26,<27",
+    "pytest>=8,<10",
+    "pytest-cov>=6,<8",
+    "pyyaml>=6,<7",
+    "ruff>=0.11,<1",
+]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "integration: requires the local PostgreSQL business database",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

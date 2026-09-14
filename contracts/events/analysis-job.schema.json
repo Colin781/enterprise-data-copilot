@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/enterprise-data-copilot/events/analysis-job.schema.json",
+  "title": "Analysis Job Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_version",
+    "event_id",
+    "sequence",
+    "job_id",
+    "tenant_id",
+    "trace_id",
+    "status",
+    "occurred_at",
+    "payload"
+  ],
+  "properties": {
+    "event_version": { "const": "1.0" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "job_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "trace_id": { "type": "string", "minLength": 16, "maxLength": 64 },
+    "status": {
+      "type": "string",
+      "enum": [
+        "CREATED",
+        "PLANNING",
+        "VALIDATING",
+        "WAITING_APPROVAL",
+        "RUNNING",
+        "COMPLETED",
+        "REJECTED",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "payload": { "type": "object", "additionalProperties": true }
+  }
+}

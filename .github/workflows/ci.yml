@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  platform-api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Test
+        run: ./mvnw --batch-mode test
+      - name: Check formatting
+        run: ./mvnw --batch-mode spotless:check
+
+  agent-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.13"
+          enable-cache: true
+      - name: Install Python 3.12
+        run: uv python install 3.12
+      - name: Sync dependencies
+        run: uv sync --locked --all-groups
+      - name: Lint
+        run: uv run ruff check .
+      - name: Check formatting
+        run: uv run ruff format --check .
+      - name: Test
+        run: uv run pytest
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Type check
+        run: pnpm typecheck
+      - name: Build
+        run: pnpm build
+
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.13"
+          enable-cache: true
+      - name: Install Python 3.12 and dependencies
+        working-directory: agent-service
+        run: uv python install 3.12 && uv sync --locked --all-groups
+      - name: Validate Compose configuration
+        run: docker compose --env-file .env.example config --quiet
+      - name: Start isolated business database
+        run: docker compose --env-file .env.example up -d --wait business-db
+      - name: Load fixed Northwind dataset
+        run: make load-northwind
+      - name: Verify P2 database and metadata acceptance tests
+        run: make verify-p2
+      - name: Verify fixed-SQL safety slice
+        run: make verify-safety
+      - name: Verify safe NL2SQL and execution accuracy
+        run: make verify-p5
+      - name: Clean up infrastructure
+        if: always()
+        run: docker compose --env-file .env.example down -v --remove-orphans

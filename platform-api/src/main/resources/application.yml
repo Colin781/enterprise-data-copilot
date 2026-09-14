@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: platform-api
+  datasource:
+    url: jdbc:postgresql://${PLATFORM_DB_HOST:localhost}:${PLATFORM_DB_PORT:5432}/${PLATFORM_DB_NAME:copilot_platform}
+    username: ${PLATFORM_DB_USER:copilot}
+    password: ${PLATFORM_DB_PASSWORD}
+  flyway:
+    create-schemas: true
+    default-schema: copilot
+    schemas: copilot
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    deserialization:
+      fail-on-unknown-properties: true
+
+platform:
+  security:
+    jwt-secret: ${PLATFORM_JWT_SECRET}
+    jwt-issuer: ${PLATFORM_JWT_ISSUER:enterprise-data-copilot}
+    access-token-ttl: ${PLATFORM_ACCESS_TOKEN_TTL:PT30M}
+
+server:
+  port: ${PLATFORM_API_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never

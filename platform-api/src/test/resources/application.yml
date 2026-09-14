@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:1/not-used
+    username: not-used
+    password: not-used
+  flyway:
+    create-schemas: true
+    default-schema: copilot
+    schemas: copilot
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    deserialization:
+      fail-on-unknown-properties: true
+
+platform:
+  security:
+    jwt-secret: test-only-jwt-secret-that-is-at-least-32-bytes
+    jwt-issuer: enterprise-data-copilot-test
+    access-token-ttl: PT15M

@@ -1,0 +1,29 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.iml
+
+# Java
+target/
+.gradle/
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Web
+node_modules/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Local runtime data
+.data/
+*.log

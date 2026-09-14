@@ -1,0 +1,14 @@
+{
+  "report_version": "1.0",
+  "measured_at": "2026-09-14",
+  "dataset_version": "northwind-compact-v1",
+  "gold_set": "evaluation/northwind/gold-v1.jsonl",
+  "candidate_source": "scripted-fake-llm-gold-candidates",
+  "metric": "execution_accuracy",
+  "total_cases": 15,
+  "correct_cases": 15,
+  "accuracy": 1.0,
+  "real_postgresql_execution": true,
+  "real_model_evaluation": false,
+  "note": "This baseline verifies the complete P5 pipeline and result comparator. It does not claim that a real language model achieves 100% accuracy."
+}
