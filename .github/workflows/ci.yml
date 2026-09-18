@@ -69,6 +69,8 @@ jobs:
         run: pnpm lint
       - name: Type check
         run: pnpm typecheck
+      - name: P9 UI safety tests
+        run: pnpm test
       - name: Build
         run: pnpm build
 
@@ -85,8 +87,8 @@ jobs:
         run: uv python install 3.12 && uv sync --locked --all-groups
       - name: Validate Compose configuration
         run: docker compose --env-file .env.example config --quiet
-      - name: Start isolated business database
-        run: docker compose --env-file .env.example up -d --wait business-db
+      - name: Start isolated databases
+        run: docker compose --env-file .env.example up -d --wait platform-db business-db
       - name: Load fixed Northwind dataset
         run: make load-northwind
       - name: Verify P2 database and metadata acceptance tests
@@ -95,6 +97,12 @@ jobs:
         run: make verify-safety
       - name: Verify safe NL2SQL and execution accuracy
         run: make verify-p5
+      - name: Verify metric RAG with PostgreSQL and pgvector
+        run: make verify-p6
+      - name: Verify durable LangGraph recovery and approval guards
+        run: make verify-p7
+      - name: Verify async dispatch, Redis progress and SSE replay
+        run: make verify-p8
       - name: Clean up infrastructure
         if: always()
         run: docker compose --env-file .env.example down -v --remove-orphans

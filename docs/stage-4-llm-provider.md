@@ -33,7 +33,7 @@ P4 按收敛版路线建立 Python Agent 的模型访问底座，但不生成 SQ
 LLM_PROVIDER=openrouter
 LLM_BASE_URL=https://openrouter.ai/api/v1
 LLM_API_KEY=replace-with-your-provider-key
-LLM_MODEL=openai/gpt-4.1-mini
+LLM_MODEL=nvidia/nemotron-3-super-120b-a12b:free
 ```
 
 模型名没有散落在业务代码中，因此在同一兼容供应商内切换模型只改 `LLM_MODEL`。自动化测试不读取也不需要真实密钥。

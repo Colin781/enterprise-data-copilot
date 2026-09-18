@@ -29,6 +29,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import tools.jackson.databind.ObjectMapper;
 
@@ -77,31 +78,38 @@ public class SecurityConfiguration {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter, ObjectMapper objectMapper)
             throws Exception {
+        var bearerTokenResolver = new DefaultBearerTokenResolver();
+
         return http.csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/internal/**")
+                        .permitAll()
                         .requestMatchers("/health", "/actuator/health", "/api/auth/login")
                         .permitAll()
                         .anyRequest()
                         .authenticated())
-                .oauth2ResourceServer(
-                        oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
-                                .authenticationEntryPoint((request, response, exception) -> writeError(
-                                        response,
-                                        objectMapper,
-                                        HttpServletResponse.SC_UNAUTHORIZED,
-                                        ApiError.of(
-                                                "AUTHENTICATION_REQUIRED",
-                                                "A valid bearer token is required.",
-                                                TraceContext.current(request))))
-                                .accessDeniedHandler((request, response, exception) -> writeError(
-                                        response,
-                                        objectMapper,
-                                        HttpServletResponse.SC_FORBIDDEN,
-                                        ApiError.of(
-                                                "ACCESS_DENIED",
-                                                "The caller does not have permission for this operation.",
-                                                TraceContext.current(request)))))
+                .oauth2ResourceServer(oauth -> oauth.bearerTokenResolver(
+                                request -> request.getRequestURI().startsWith("/internal/")
+                                        ? null
+                                        : bearerTokenResolver.resolve(request))
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                        .authenticationEntryPoint((request, response, exception) -> writeError(
+                                response,
+                                objectMapper,
+                                HttpServletResponse.SC_UNAUTHORIZED,
+                                ApiError.of(
+                                        "AUTHENTICATION_REQUIRED",
+                                        "A valid bearer token is required.",
+                                        TraceContext.current(request))))
+                        .accessDeniedHandler((request, response, exception) -> writeError(
+                                response,
+                                objectMapper,
+                                HttpServletResponse.SC_FORBIDDEN,
+                                ApiError.of(
+                                        "ACCESS_DENIED",
+                                        "The caller does not have permission for this operation.",
+                                        TraceContext.current(request)))))
                 .build();
     }
 

@@ -85,4 +85,45 @@ public class Approval {
     public long getVersion() {
         return version;
     }
+
+    public UUID getTenantId() {
+        return tenantId;
+    }
+
+    public UUID getAnalysisJobId() {
+        return analysisJobId;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    public UUID getDecidedBy() {
+        return decidedBy;
+    }
+
+    public String getDecisionComment() {
+        return decisionComment;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getDecidedAt() {
+        return decidedAt;
+    }
+
+    public void decide(ApprovalStatus decision, UUID reviewerId, String comment) {
+        if (status != ApprovalStatus.PENDING) {
+            throw new IllegalStateException("approval has already been decided");
+        }
+        if (decision == ApprovalStatus.PENDING) {
+            throw new IllegalArgumentException("a pending decision is invalid");
+        }
+        status = decision;
+        decidedBy = reviewerId;
+        decisionComment = comment;
+        decidedAt = Instant.now();
+    }
 }

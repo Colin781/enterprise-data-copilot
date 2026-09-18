@@ -37,6 +37,21 @@ class BusinessDatabaseSettings(BaseSettings):
     metadata_cache_ttl_seconds: int = 300
 
 
+class PlatformDatabaseSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_prefix="PLATFORM_DB_",
+        extra="ignore",
+    )
+
+    host: str = "localhost"
+    port: int = 5432
+    name: str = "copilot_platform"
+    user: str = "copilot"
+    password: SecretStr = Field(default=SecretStr("change-me-platform"))
+
+
 class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -48,7 +63,9 @@ class LLMSettings(BaseSettings):
     provider: Literal["openrouter", "openai-compatible"] = "openrouter"
     base_url: AnyHttpUrl = AnyHttpUrl("https://openrouter.ai/api/v1")
     api_key: SecretStr = Field(default=SecretStr(""))
-    model: str = Field(default="openai/gpt-4.1-mini", min_length=1, max_length=200)
+    model: str = Field(
+        default="nvidia/nemotron-3-super-120b-a12b:free", min_length=1, max_length=200
+    )
     structured_output_mode: Literal["json_schema", "json_object"] = "json_schema"
     request_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     connect_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
@@ -88,6 +105,44 @@ class NL2SQLSettings(BaseSettings):
     max_repairs: int = Field(default=2, ge=0, le=2)
 
 
+class RetrievalSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_prefix="RAG_",
+        extra="ignore",
+    )
+
+    embedding_dimensions: int = Field(default=64, ge=64, le=64)
+    chunk_max_characters: int = Field(default=1_200, ge=200, le=4_000)
+    chunk_overlap_characters: int = Field(default=120, ge=0, le=500)
+    result_limit: int = Field(default=5, ge=1, le=20)
+    rrf_k: int = Field(default=60, ge=1, le=1_000)
+    cache_ttl_seconds: int = Field(default=300, ge=1, le=86_400)
+    min_lexical_score: float = Field(default=0.08, ge=0, le=1)
+    min_vector_score: float = Field(default=0.26, ge=-1, le=1)
+    max_markdown_bytes: int = Field(default=2_000_000, ge=1_024, le=20_000_000)
+    max_pdf_bytes: int = Field(default=10_000_000, ge=1_024, le=50_000_000)
+    max_pdf_pages: int = Field(default=100, ge=1, le=1_000)
+
+
+class AgentWorkflowSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_prefix="AGENT_WORKFLOW_",
+        extra="ignore",
+    )
+
+    service_token: SecretStr = Field(default=SecretStr("replace-with-a-random-local-token"))
+    checkpoint_dsn: SecretStr = Field(
+        default=SecretStr("postgresql://copilot:change-me-platform@localhost:5432/copilot_platform")
+    )
+    platform_api_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8080")
+    max_repairs: int = Field(default=2, ge=2, le=2)
+    minimum_confidence: float = Field(default=0.65, ge=0, le=1)
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
@@ -96,6 +151,11 @@ def get_settings() -> Settings:
 @lru_cache
 def get_business_database_settings() -> BusinessDatabaseSettings:
     return BusinessDatabaseSettings()
+
+
+@lru_cache
+def get_platform_database_settings() -> PlatformDatabaseSettings:
+    return PlatformDatabaseSettings()
 
 
 @lru_cache
@@ -111,3 +171,13 @@ def get_query_safety_settings() -> QuerySafetySettings:
 @lru_cache
 def get_nl2sql_settings() -> NL2SQLSettings:
     return NL2SQLSettings()
+
+
+@lru_cache
+def get_retrieval_settings() -> RetrievalSettings:
+    return RetrievalSettings()
+
+
+@lru_cache
+def get_agent_workflow_settings() -> AgentWorkflowSettings:
+    return AgentWorkflowSettings()

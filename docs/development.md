@@ -114,7 +114,46 @@ SQL 必须先通过 SQLGlot AST 检查，只允许单条查询、Northwind schem
 
 通过检查的查询会被外层 `LIMIT` 再次约束，并使用专用只读账号在显式只读事务中执行。返回结果同时受到最大行数、列数和序列化字节数限制。每次成功、策略拒绝或执行失败都会产生只包含指纹、原因码、资源标识和计数的审计事件，不保存 SQL 原文和业务数据行。
 
-当前审计通过 `QueryAuditSink` 边界输出；自动化测试使用内存实现，运行时可使用安全日志实现。将事件持久化到 Java 平台 `audit_events` 表属于 P7 跨服务集成，Python 不直接写平台数据库。
+当前查询审计通过 `QueryAuditSink` 边界输出；自动化测试使用内存实现，运行时可使用安全日志实现。P7 已将节点摘要和审批请求接到 Java，查询级 audit callback 与跨服务 trace 一起留到 P11；Python 不直接写平台数据库。
+
+## P7 LangGraph 与审批恢复
+
+P7 使用 PostgreSQL checkpointer 保存每个 `jobId/thread_id` 的图状态，并通过 Java 内部回调保存摘要化 `agent_steps` 与审批请求：
+
+```bash
+make compose-up
+make verify-p7
+```
+
+`make verify-p7` 会真实关闭并重新建立 PostgreSQL 连接，再恢复等待审批的图。自动修复固定为最多两次；相同审批第二次恢复返回冲突。服务间请求使用 `AGENT_SERVICE_TOKEN`/`AGENT_WORKFLOW_SERVICE_TOKEN`，两个值在本地必须一致，真实值只放在 `.env` 或 secret manager。
+
+Agent 启动时会执行官方 checkpointer 的幂等 setup；`LANGGRAPH_STRICT_MSGPACK` 在代码中默认开启。页面刷新可重新读取 PostgreSQL 中的任务与步骤。
+
+## P8 异步执行与 SSE
+
+P8 在任务事务提交后将工作放入有界线程池，因此创建接口不会等待 Python。短期进度写入 Redis Stream，最终状态和结果仍写入 PostgreSQL：
+
+```bash
+make verify-p8
+```
+
+该命令使用真实 PostgreSQL/Redis Testcontainers，验证阻塞的 Python 调用不会阻塞 `202`、临时失败会有界重试、事件序号有序、`Last-Event-ID` 续传，以及 Redis 清空后的 PostgreSQL 快照恢复。
+
+浏览器订阅地址为 `GET /api/analysis/jobs/{jobId}/events`，媒体类型是 `text/event-stream`，并使用与任务查询相同的 JWT 和租户/所有者权限。重连时发送最后接收的 SSE `id` 作为 `Last-Event-ID`。
+
+线程池大小、队列容量、重试次数、Redis 事件 TTL/长度和 SSE 超时通过 `.env.example` 中的 `ANALYSIS_*` 配置调整。Redis 故障不会改变任务权威状态；恢复后以 `GET /api/analysis/jobs/{jobId}` 为准。
+
+## P9 前端工作台
+
+Web 通过同源 `/api/platform/*` 路由把请求代理到服务端固定的 `PLATFORM_API_URL`，浏览器不会直接获得 Python 地址或服务令牌。启动三项服务后访问 `http://localhost:3000`，即可使用登录、分析任务、数据源、指标知识、轨迹和管理员审批页面。
+
+`.env.example` 默认开启仅供本地演示的幂等 bootstrap：租户 `northwind`，管理员 `admin@northwind.local`、分析员 `analyst@northwind.local`，初始密码 `change-me-demo`。任何非开发环境必须关闭 `PLATFORM_BOOTSTRAP_ENABLED` 并使用正式身份开通流程。
+
+```bash
+make verify-p9
+```
+
+P9 验收使用本地锁定并已安装的 Node 二进制执行 Web 安全测试、lint、类型检查和 production build，并联动 Java/Python 的必要接口测试。图表是固定 JSON schema 到 React SVG 的映射，禁止任意代码与原始 HTML 执行。
 
 ## 端口
 

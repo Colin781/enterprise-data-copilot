@@ -2,6 +2,8 @@ package com.example.copilot.platform;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -20,8 +22,11 @@ import com.example.copilot.identity.domain.Tenant;
 import com.example.copilot.identity.domain.UserRole;
 import com.example.copilot.identity.repository.AppUserRepository;
 import com.example.copilot.identity.repository.TenantRepository;
+import com.example.copilot.integration.agent.MetricKnowledgeClient;
+import com.example.copilot.knowledge.api.MetricDocumentResource;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.OptimisticLockException;
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +35,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
@@ -71,6 +78,12 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
     @Autowired
     EntityManagerFactory entityManagerFactory;
 
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
+    @MockitoBean
+    MetricKnowledgeClient metricKnowledgeClient;
+
     @BeforeEach
     void cleanDatabase() {
         approvalRepository.deleteAllInBatch();
@@ -102,6 +115,36 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
     }
 
     @Test
+    void internalServiceTokenBypassesJwtParsingAndIsStillValidated() throws Exception {
+        var jobId = UUID.randomUUID();
+        var body =
+                """
+                {
+                  "step_name": "classify",
+                  "status": "SUCCEEDED",
+                  "attempt": 0,
+                  "input_summary": {},
+                  "output_summary": {},
+                  "duration_ms": 1,
+                  "error_code": null
+                }
+                """;
+
+        mockMvc.perform(post("/internal/v1/analysis/jobs/{jobId}/steps", jobId)
+                        .header("Authorization", "Bearer wrong-service-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/internal/v1/analysis/jobs/{jobId}/steps", jobId)
+                        .header("Authorization", "Bearer test-only-agent-service-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
     void rolesRestrictAdministrativeAndAnalysisOperations() throws Exception {
         var analyst = createUser("alpha", "analyst@alpha.test", UserRole.ANALYST);
         var viewer = createUser(analyst.tenant(), "viewer@alpha.test", UserRole.VIEWER);
@@ -112,6 +155,13 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
                         .header("Authorization", bearer(analystToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(dataSourceRequest("alpha-source")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        mockMvc.perform(post("/api/approvals/{id}/approve", UUID.randomUUID())
+                        .header("Authorization", bearer(analystToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
@@ -146,6 +196,48 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
                                 .orElseThrow()
                                 .getId(),
                         "DATA_SOURCE_CREATED"))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void onlyAdministratorCanUploadMetricKnowledgeThroughThePlatformBoundary() throws Exception {
+        var admin = createUser("alpha", "admin@alpha.test", UserRole.ADMIN);
+        createUser(admin.tenant(), "analyst@alpha.test", UserRole.ANALYST);
+        var documentId = UUID.randomUUID();
+        var now = Instant.now();
+        when(metricKnowledgeClient.ingest(any(), any(), any(), any()))
+                .thenReturn(new MetricDocumentResource(
+                        documentId,
+                        admin.tenant().getId(),
+                        "Revenue",
+                        1,
+                        "ACTIVE",
+                        "MARKDOWN",
+                        "metrics.md",
+                        "0".repeat(64),
+                        1,
+                        now,
+                        now));
+        var body =
+                """
+                {"title":"Revenue","source_name":"metrics.md","source_type":"MARKDOWN","content_base64":"IyBSZXZlbnVl"}
+                """;
+
+        mockMvc.perform(post("/api/metric-documents")
+                        .header("Authorization", bearer(login("alpha", "analyst@alpha.test")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/metric-documents")
+                        .header("Authorization", bearer(login("alpha", "admin@alpha.test")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(documentId.toString()))
+                .andExpect(jsonPath("$.chunk_count").value(1));
+
+        assertThat(auditEventRepository.countByTenantIdAndAction(admin.tenant().getId(), "METRIC_DOCUMENT_UPLOADED"))
                 .isEqualTo(1);
     }
 
@@ -220,6 +312,11 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
 
+        mockMvc.perform(get("/api/analysis/jobs/{id}/events", betaJob.getId())
+                        .header("Authorization", bearer(alphaToken)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
         mockMvc.perform(get("/api/data-sources").header("Authorization", bearer(alphaToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isEmpty());
@@ -275,6 +372,24 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
             firstManager.close();
             secondManager.close();
         }
+    }
+
+    @Test
+    void metricKnowledgeMigrationCreatesVectorBackedTenantTables() {
+        assertThat(jdbcTemplate.queryForObject(
+                        "SELECT extname FROM pg_extension WHERE extname = 'vector'", String.class))
+                .isEqualTo("vector");
+        assertThat(jdbcTemplate.queryForObject("SELECT to_regclass('copilot.metric_documents')::text", String.class))
+                .isEqualTo("copilot.metric_documents");
+        assertThat(jdbcTemplate.queryForObject(
+                        "SELECT format_type(atttypid, atttypmod) "
+                                + "FROM pg_attribute "
+                                + "WHERE attrelid = 'copilot.metric_chunks'::regclass "
+                                + "AND attname = 'embedding'",
+                        String.class))
+                .isEqualTo("vector(64)");
+        assertThat(jdbcTemplate.queryForObject("SELECT to_regclass('copilot.agent_steps')::text", String.class))
+                .isEqualTo("copilot.agent_steps");
     }
 
     private Fixture createUser(String tenantSlug, String email, UserRole role) {

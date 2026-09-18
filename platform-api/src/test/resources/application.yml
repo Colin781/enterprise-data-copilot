@@ -15,9 +15,31 @@ spring:
     property-naming-strategy: SNAKE_CASE
     deserialization:
       fail-on-unknown-properties: true
+  data:
+    redis:
+      host: localhost
+      port: 1
+      connect-timeout: 100ms
+      timeout: 100ms
+      repositories:
+        enabled: false
 
 platform:
   security:
     jwt-secret: test-only-jwt-secret-that-is-at-least-32-bytes
     jwt-issuer: enterprise-data-copilot-test
     access-token-ttl: PT15M
+  agent:
+    service-token: test-only-agent-service-token
+    base-url: http://localhost:1
+  execution:
+    enabled: false
+    core-pool-size: 1
+    max-pool-size: 1
+    queue-capacity: 10
+    max-attempts: 1
+    retry-backoff: PT0S
+    event-retention: PT1H
+    event-max-length: 100
+    sse-timeout: PT30S
+    dispatch-lease: PT30S

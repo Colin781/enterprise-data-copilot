@@ -8,15 +8,19 @@ import com.example.copilot.audit.service.AuditService;
 import com.example.copilot.common.api.IdempotencyConflictException;
 import com.example.copilot.common.api.ResourceNotFoundException;
 import com.example.copilot.datasource.repository.DataSourceRepository;
+import com.example.copilot.execution.AnalysisJobAccepted;
 import com.example.copilot.identity.repository.AppUserRepository;
 import com.example.copilot.security.CallerIdentity.Caller;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class AnalysisJobService {
@@ -25,16 +29,22 @@ public class AnalysisJobService {
     private final DataSourceRepository dataSourceRepository;
     private final AppUserRepository userRepository;
     private final AuditService auditService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
 
     public AnalysisJobService(
             AnalysisJobRepository jobRepository,
             DataSourceRepository dataSourceRepository,
             AppUserRepository userRepository,
-            AuditService auditService) {
+            AuditService auditService,
+            ApplicationEventPublisher eventPublisher,
+            ObjectMapper objectMapper) {
         this.jobRepository = jobRepository;
         this.dataSourceRepository = dataSourceRepository;
         this.userRepository = userRepository;
         this.auditService = auditService;
+        this.eventPublisher = eventPublisher;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -52,7 +62,7 @@ public class AnalysisJobService {
             if (!existing.get().getRequestHash().equals(requestHash)) {
                 throw new IdempotencyConflictException();
             }
-            return AnalysisJobResource.from(existing.get());
+            return AnalysisJobResource.from(existing.get(), objectMapper);
         }
 
         dataSourceRepository
@@ -70,7 +80,8 @@ public class AnalysisJobService {
                 traceId));
         auditService.recordSuccess(
                 caller.tenantId(), caller.userId(), "ANALYSIS_JOB_CREATED", "ANALYSIS_JOB", job.getId(), traceId);
-        return AnalysisJobResource.from(job);
+        eventPublisher.publishEvent(new AnalysisJobAccepted(job.getId()));
+        return AnalysisJobResource.from(job, objectMapper);
     }
 
     @Transactional(readOnly = true)
@@ -78,8 +89,18 @@ public class AnalysisJobService {
         var job = caller.roles().contains("ADMIN")
                 ? jobRepository.findByIdAndTenantId(jobId, caller.tenantId())
                 : jobRepository.findByIdAndTenantIdAndCreatedBy(jobId, caller.tenantId(), caller.userId());
-        return job.map(AnalysisJobResource::from)
+        return job.map(value -> AnalysisJobResource.from(value, objectMapper))
                 .orElseThrow(() -> new ResourceNotFoundException("The analysis job was not found."));
+    }
+
+    @Transactional(readOnly = true)
+    public List<AnalysisJobResource> list(Caller caller) {
+        var jobs = caller.roles().contains("ADMIN")
+                ? jobRepository.findTop50ByTenantIdOrderByCreatedAtDesc(caller.tenantId())
+                : jobRepository.findTop50ByTenantIdAndCreatedByOrderByCreatedAtDesc(caller.tenantId(), caller.userId());
+        return jobs.stream()
+                .map(value -> AnalysisJobResource.from(value, objectMapper))
+                .toList();
     }
 
     private static String requestHash(UUID dataSourceId, String question) {

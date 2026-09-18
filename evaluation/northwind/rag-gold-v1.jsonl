@@ -1,0 +1,24 @@
+{"id":"r001","question":"销售额的统一计算口径是什么？","relevant_sections":["retail-metrics-v1.md#销售额-revenue"],"answerable":true}
+{"id":"r002","question":"Gross Sales 是否需要扣除折扣？","relevant_sections":["retail-metrics-v1.md#原价销售额-gross-sales"],"answerable":true}
+{"id":"r003","question":"折扣金额应该怎样计算？","relevant_sections":["retail-metrics-v1.md#折扣金额-discount-amount"],"answerable":true}
+{"id":"r004","question":"一个订单有多条明细时订单数怎么算？","relevant_sections":["retail-metrics-v1.md#订单数-order-count"],"answerable":true}
+{"id":"r005","question":"平均订单金额的分母是什么？","relevant_sections":["retail-metrics-v1.md#平均订单金额-average-order-value"],"answerable":true}
+{"id":"r006","question":"怎样定义统计期内的活跃客户？","relevant_sections":["retail-metrics-v1.md#活跃客户-active-customer"],"answerable":true}
+{"id":"r007","question":"新客户看注册日期还是首次下单日期？","relevant_sections":["retail-metrics-v1.md#新客户-new-customer"],"answerable":true}
+{"id":"r008","question":"复购客户至少需要多少张订单？","relevant_sections":["retail-metrics-v1.md#复购客户-repeat-customer"],"answerable":true}
+{"id":"r009","question":"Northwind 能不能计算退款率？","relevant_sections":["retail-metrics-v1.md#退款率-refund-rate"],"answerable":true}
+{"id":"r010","question":"销量是订单数量还是商品件数？","relevant_sections":["retail-metrics-v1.md#销量-units-sold"],"answerable":true}
+{"id":"r011","question":"客单价怎么定义？","relevant_sections":["retail-metrics-v1.md#客单价-customer-revenue-average"],"answerable":true}
+{"id":"r012","question":"什么订单算准时发货？","relevant_sections":["retail-metrics-v1.md#准时发货率-on-time-shipment-rate"],"answerable":true}
+{"id":"r013","question":"未发货订单如何识别？","relevant_sections":["retail-metrics-v1.md#未发货订单-unshipped-orders"],"answerable":true}
+{"id":"r014","question":"区域销售额按收货地址还是客户注册地址？","relevant_sections":["retail-metrics-v1.md#区域销售额-regional-revenue"],"answerable":true}
+{"id":"r015","question":"环比增长率遇到上期为零怎么办？","relevant_sections":["retail-metrics-v1.md#环比增长率-period-over-period-growth"],"answerable":true}
+{"id":"r016","question":"同比增长应该和哪个期间比较？","relevant_sections":["retail-metrics-v1.md#同比增长率-year-over-year-growth"],"answerable":true}
+{"id":"r017","question":"客户销售贡献率如何计算？","relevant_sections":["retail-metrics-v1.md#客户销售贡献-customer-contribution"],"answerable":true}
+{"id":"r018","question":"热销商品默认按金额还是件数排序？","relevant_sections":["retail-metrics-v1.md#热销商品-top-products"],"answerable":true}
+{"id":"r019","question":"品类销售额怎样聚合？","relevant_sections":["retail-metrics-v1.md#品类销售额-category-revenue"],"answerable":true}
+{"id":"r020","question":"库存量是期间指标还是时点指标？","relevant_sections":["retail-metrics-v1.md#库存量-units-in-stock"],"answerable":true}
+{"id":"r021","question":"员工满意度的定义是什么？","relevant_sections":[],"answerable":false}
+{"id":"r022","question":"广告点击转化率按哪个归因窗口计算？","relevant_sections":[],"answerable":false}
+{"id":"r023","question":"供应商碳排放强度的口径是什么？","relevant_sections":[],"answerable":false}
+{"id":"r024","question":"门店坪效应该如何计算？","relevant_sections":[],"answerable":false}

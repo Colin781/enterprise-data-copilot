@@ -8,6 +8,7 @@ from app.nl2sql.errors import NL2SQLRepairExhaustedError, SchemaSelectionError
 from app.nl2sql.models import NL2SQLDraft, NL2SQLResult, TableSelection
 from app.nl2sql.prompts import generation_messages, repair_messages, selection_messages
 from app.nl2sql.question_guard import QuestionGuard
+from app.nl2sql.table_references import normalize_reported_tables
 from app.query_safety.errors import QueryApprovalRequiredError, QuerySafetyError
 from app.query_safety.models import QueryContext, QueryPolicy
 from app.query_safety.service import SafeQueryService
@@ -64,7 +65,11 @@ class NL2SQLService:
             )
             model_calls += draft_result.attempts
             usage = _add_usage(usage, draft_result.usage)
-            self._validate_draft_tables(draft_result.output, selected_tables)
+            self._validate_draft_tables(
+                draft_result.output,
+                selected_tables,
+                allowed_schema=policy.allowed_schema,
+            )
             try:
                 outcome = self._safe_query_service.execute_generated(
                     sql=draft_result.output.sql,
@@ -114,8 +119,16 @@ class NL2SQLService:
         return tables
 
     @staticmethod
-    def _validate_draft_tables(draft: NL2SQLDraft, selected_tables: tuple[str, ...]) -> None:
-        if not set(draft.tables_used).issubset(selected_tables):
+    def _validate_draft_tables(
+        draft: NL2SQLDraft,
+        selected_tables: tuple[str, ...],
+        *,
+        allowed_schema: str,
+    ) -> None:
+        reported_tables = normalize_reported_tables(
+            draft.tables_used, allowed_schema=allowed_schema
+        )
+        if not set(reported_tables).issubset(selected_tables):
             raise SchemaSelectionError()
 
 

@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.llm.models import LLMTokenUsage
@@ -15,7 +17,9 @@ class AnalysisPlan(BaseModel):
 
     summary: str = Field(min_length=1, max_length=500)
     steps: tuple[str, ...] = Field(min_length=1, max_length=8)
-    expected_columns: tuple[str, ...] = Field(min_length=1, max_length=50)
+    expected_columns: tuple[
+        Annotated[str, Field(pattern=r"^[a-z_][a-z0-9_]*$", max_length=63)], ...
+    ] = Field(min_length=1, max_length=50)
 
 
 class NL2SQLDraft(BaseModel):

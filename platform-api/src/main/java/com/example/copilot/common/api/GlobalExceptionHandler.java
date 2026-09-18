@@ -42,6 +42,11 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", exception.getMessage(), request);
     }
 
+    @ExceptionHandler(ApprovalAlreadyDecidedException.class)
+    ResponseEntity<ApiError> approvalConflict(ApprovalAlreadyDecidedException exception, HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "APPROVAL_ALREADY_DECIDED", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiError> invalidBody(MethodArgumentNotValidException exception, HttpServletRequest request) {
         var details = new LinkedHashMap<String, Object>();

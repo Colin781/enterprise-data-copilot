@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from app.data_sources.models import DataSourceConfig
 from app.llm.fake import FakeLLMProvider
@@ -15,7 +15,9 @@ from app.nl2sql.errors import (
     NL2SQLRepairExhaustedError,
     SchemaSelectionError,
 )
+from app.nl2sql.models import AnalysisPlan
 from app.nl2sql.service import NL2SQLService
+from app.nl2sql.table_references import normalize_reported_tables
 from app.query_safety.audit import InMemoryQueryAuditSink
 from app.query_safety.errors import QueryApprovalRequiredError
 from app.query_safety.guard import SQLGuard
@@ -456,3 +458,21 @@ def test_unknown_or_duplicate_table_selection_fails_closed(
     assert len(provider.requests) == 1
     assert estimator.calls == 0
     assert executor.calls == 0
+
+
+def test_reported_tables_accept_only_unqualified_or_allowed_schema() -> None:
+    assert normalize_reported_tables(
+        ("orders", "northwind.order_details"), allowed_schema="northwind"
+    ) == ("orders", "order_details")
+
+    with pytest.raises(SchemaSelectionError):
+        normalize_reported_tables(("public.orders",), allowed_schema="northwind")
+
+
+def test_analysis_plan_requires_exact_sql_output_aliases() -> None:
+    with pytest.raises(ValidationError):
+        AnalysisPlan(
+            summary="Quarterly sales",
+            steps=("Aggregate sales by quarter",),
+            expected_columns=("quarter (date)", "total_sales"),
+        )

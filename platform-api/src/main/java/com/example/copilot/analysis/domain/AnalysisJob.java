@@ -62,6 +62,30 @@ public class AnalysisJob {
 
     private Instant finishedAt;
 
+    @Column(length = 64)
+    private String workflowThreadId;
+
+    @Column(columnDefinition = "text")
+    private String generatedSql;
+
+    @Column(columnDefinition = "text")
+    private String answer;
+
+    @Column(length = 80)
+    private String errorCode;
+
+    @Column(columnDefinition = "text")
+    private String resultColumnsJson;
+
+    @Column(columnDefinition = "text")
+    private String resultRowsJson;
+
+    @Column(columnDefinition = "text")
+    private String chartSpecJson;
+
+    @Column(columnDefinition = "text")
+    private String citationsJson;
+
     protected AnalysisJob() {}
 
     public AnalysisJob(
@@ -124,6 +148,10 @@ public class AnalysisJob {
         return requestHash;
     }
 
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
     public String getTraceId() {
         return traceId;
     }
@@ -142,5 +170,69 @@ public class AnalysisJob {
 
     public Instant getFinishedAt() {
         return finishedAt;
+    }
+
+    public void transitionTo(AnalysisJobStatus target) {
+        status = new AnalysisJobStateMachine().transition(status, target);
+        if (new AnalysisJobStateMachine().isTerminal(target)) {
+            finishedAt = Instant.now();
+        }
+    }
+
+    public void attachWorkflowThread(String threadId) {
+        this.workflowThreadId = threadId;
+    }
+
+    public String getWorkflowThreadId() {
+        return workflowThreadId;
+    }
+
+    public String getGeneratedSql() {
+        return generatedSql;
+    }
+
+    public String getAnswer() {
+        return answer;
+    }
+
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    public void storeAgentResult(String sql, String answer, String errorCode) {
+        storeAgentResult(sql, answer, errorCode, null, null, null, null);
+    }
+
+    public void storeAgentResult(
+            String sql,
+            String answer,
+            String errorCode,
+            String resultColumnsJson,
+            String resultRowsJson,
+            String chartSpecJson,
+            String citationsJson) {
+        this.generatedSql = sql;
+        this.answer = answer;
+        this.errorCode = errorCode;
+        this.resultColumnsJson = resultColumnsJson;
+        this.resultRowsJson = resultRowsJson;
+        this.chartSpecJson = chartSpecJson;
+        this.citationsJson = citationsJson;
+    }
+
+    public String getResultColumnsJson() {
+        return resultColumnsJson;
+    }
+
+    public String getResultRowsJson() {
+        return resultRowsJson;
+    }
+
+    public String getChartSpecJson() {
+        return chartSpecJson;
+    }
+
+    public String getCitationsJson() {
+        return citationsJson;
     }
 }

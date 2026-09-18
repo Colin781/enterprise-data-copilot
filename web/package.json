@@ -2,11 +2,13 @@
   "name": "enterprise-data-copilot-web",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },

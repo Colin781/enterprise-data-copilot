@@ -62,8 +62,13 @@ class OpenAICompatibleProvider:
         self._connect_timeout_seconds = connect_timeout_seconds
         self._app_name = app_name
         self._site_url = site_url
-        self._owns_client = client is None
-        self._client = client or httpx.AsyncClient(base_url=base_url.rstrip("/"))
+        self._base_url = base_url.rstrip("/")
+        # Production graph nodes currently execute each coroutine through a fresh
+        # asyncio.run() event loop.  A persistent AsyncClient would retain an
+        # event-loop-bound connection pool after the first node and fail on the
+        # next node with "Event loop is closed".  Keep injected clients for
+        # caller-managed tests/integrations, but create owned clients per call.
+        self._client = client
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(provider_name={self.provider_name!r}, model={self.model!r})"
@@ -98,12 +103,21 @@ class OpenAICompatibleProvider:
         )
 
         try:
-            response = await self._client.post(
-                "/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=timeout,
-            )
+            if self._client is None:
+                async with httpx.AsyncClient(base_url=self._base_url) as client:
+                    response = await client.post(
+                        "/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=timeout,
+                    )
+            else:
+                response = await self._client.post(
+                    "/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout,
+                )
         except httpx.TimeoutException as exc:
             raise LLMTimeoutError() from exc
         except httpx.NetworkError as exc:
@@ -128,8 +142,9 @@ class OpenAICompatibleProvider:
         )
 
     async def aclose(self) -> None:
-        if self._owns_client:
-            await self._client.aclose()
+        # Injected clients remain caller-owned; production clients are closed by
+        # their per-request async context manager.
+        return None
 
     @staticmethod
     def _response_format(request: LLMRequest) -> dict[str, Any]:
@@ -148,8 +163,10 @@ class OpenAICompatibleProvider:
     def _raise_for_status(status_code: int) -> None:
         if 200 <= status_code < 300:
             return
-        if status_code in {401, 403}:
+        if status_code == 401:
             raise LLMAuthenticationError()
+        if status_code == 403:
+            raise LLMRequestRejectedError()
         if status_code in {408, 504}:
             raise LLMTimeoutError()
         if status_code == 429:

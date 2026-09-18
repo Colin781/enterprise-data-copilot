@@ -97,6 +97,21 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
   /api/analysis/jobs:
+    get:
+      operationId: listAnalysisJobs
+      description: Returns at most the 50 most recent jobs visible to the caller.
+      tags: [analysis]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Tenant-scoped analysis history.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisJobResource"
     post:
       operationId: createAnalysisJob
       tags: [analysis]
@@ -164,6 +179,171 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/analysis/jobs/{jobId}/steps:
+    get:
+      operationId: listAgentSteps
+      tags: [analysis]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Redacted, tenant-scoped workflow step summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentStepResource"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/analysis/jobs/{jobId}/events:
+    get:
+      operationId: streamAnalysisJobEvents
+      description: Replays retained events after Last-Event-ID and then streams live progress.
+      tags: [analysis]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Ordered, tenant-scoped analysis progress events.
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/AnalysisJobEvent"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/approvals/{approvalId}/approve:
+    post:
+      operationId: approveAnalysisRun
+      tags: [approvals]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalDecisionRequest"
+      responses:
+        "200":
+          description: The administrator decision and resumed workflow state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalResource"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/approvals:
+    get:
+      operationId: listApprovals
+      description: ADMIN-only tenant approval history, newest first.
+      tags: [approvals]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Tenant-scoped approvals.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApprovalResource"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/approvals/{approvalId}/reject:
+    post:
+      operationId: rejectAnalysisRun
+      tags: [approvals]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalDecisionRequest"
+      responses:
+        "200":
+          description: The administrator rejection and terminal job state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalResource"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/metric-documents:
+    get:
+      operationId: listMetricDocuments
+      tags: [knowledge]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Metric document versions in the authenticated tenant.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MetricDocumentResource"
+    post:
+      operationId: uploadMetricDocument
+      description: ADMIN-only bounded document ingestion through the internal Agent service.
+      tags: [knowledge]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricDocumentUploadRequest"
+      responses:
+        "201":
+          description: The document was parsed, versioned and indexed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricDocumentResource"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 components:
   securitySchemes:
     bearerAuth:
@@ -274,6 +454,10 @@ components:
         - created_at
         - updated_at
         - version
+        - columns
+        - rows
+        - chart
+        - citations
       properties:
         id:
           type: string
@@ -300,6 +484,180 @@ components:
           format: date-time
         error:
           $ref: "#/components/schemas/ApiError"
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        workflow_thread_id:
+          type: string
+          maxLength: 64
+        generated_sql:
+          type: string
+        answer:
+          type: string
+        error_code:
+          type: string
+          maxLength: 80
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: true
+        chart:
+          $ref: "#/components/schemas/ChartSpec"
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Citation"
+    ChartSpec:
+      type: object
+      additionalProperties: false
+      required: [type, title, series]
+      properties:
+        type:
+          type: string
+          enum: [bar, line, pie, table]
+        title:
+          type: string
+          maxLength: 160
+        x:
+          type: [string, "null"]
+        series:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+    Citation:
+      type: object
+      additionalProperties: true
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        document_title:
+          type: string
+        document_version:
+          type: integer
+        section_key:
+          type: string
+        section_title:
+          type: string
+        source_locator:
+          type: string
+    AnalysisJobEvent:
+      type: object
+      additionalProperties: false
+      required:
+        [event_version, event_id, sequence, job_id, tenant_id, trace_id, type, status, occurred_at, payload]
+      properties:
+        event_version:
+          type: string
+          const: "1.0"
+        event_id:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+        job_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+          minLength: 16
+          maxLength: 64
+        type:
+          type: string
+          enum:
+            [JOB_ACCEPTED, JOB_RECOVERED, JOB_STATUS_CHANGED, JOB_SNAPSHOT, AGENT_STEP, APPROVAL_REQUIRED, APPROVAL_DECIDED]
+        status:
+          $ref: "#/components/schemas/AnalysisJobStatus"
+        occurred_at:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+    AgentStepResource:
+      type: object
+      additionalProperties: false
+      required:
+        [id, step_name, status, attempt, input_summary, output_summary, duration_ms, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        step_name:
+          type: string
+          maxLength: 80
+        status:
+          type: string
+          enum: [SUCCEEDED, FAILED, WAITING]
+        attempt:
+          type: integer
+          minimum: 0
+          maximum: 3
+        input_summary:
+          type: object
+          additionalProperties: true
+        output_summary:
+          type: object
+          additionalProperties: true
+        duration_ms:
+          type: integer
+          format: int64
+          minimum: 0
+        error_code:
+          type: string
+          maxLength: 80
+        created_at:
+          type: string
+          format: date-time
+    ApprovalDecisionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        comment:
+          type: string
+          maxLength: 500
+    ApprovalResource:
+      type: object
+      additionalProperties: false
+      required: [id, analysis_job_id, status, reason, created_at, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        analysis_job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, APPROVED, REJECTED]
+        reason:
+          type: string
+          maxLength: 500
+        decided_by:
+          type: string
+          format: uuid
+        decision_comment:
+          type: string
+          maxLength: 500
+        created_at:
+          type: string
+          format: date-time
+        decided_at:
+          type: string
+          format: date-time
         version:
           type: integer
           format: int64
@@ -398,6 +756,62 @@ components:
           type: integer
           format: int64
           minimum: 0
+    MetricDocumentUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [title, source_name, source_type, content_base64]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 240
+        source_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        source_type:
+          type: string
+          enum: [MARKDOWN, PDF]
+        content_base64:
+          type: string
+          contentEncoding: base64
+          maxLength: 14000000
+    MetricDocumentResource:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, title, version, status, source_type, source_name, content_sha256, chunk_count, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [ACTIVE, SUPERSEDED]
+        source_type:
+          type: string
+          enum: [MARKDOWN, PDF]
+        source_name:
+          type: string
+        content_sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        chunk_count:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     ApiError:
       type: object
       additionalProperties: false

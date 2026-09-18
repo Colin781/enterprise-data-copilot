@@ -38,11 +38,11 @@ paths:
               $ref: "#/components/schemas/StartRunRequest"
       responses:
         "202":
-          description: The run was accepted by the internal service boundary.
+          description: The graph ran until completion or a durable interrupt.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StartRunResponse"
+                $ref: "#/components/schemas/WorkflowResult"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -53,6 +53,66 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalError"
+  /internal/v1/runs/{runId}/resume:
+    post:
+      operationId: resumeAgentRun
+      tags: [runs]
+      security:
+        - serviceToken: []
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/UserRole"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResumeRunRequest"
+      responses:
+        "200":
+          description: The durable graph resumed with the one-time administrator decision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /internal/v1/knowledge/documents:
+    post:
+      operationId: ingestMetricDocument
+      description: Parses, versions and indexes one bounded metric document for the asserted tenant.
+      tags: [knowledge]
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/Traceparent"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeIngestRequest"
+      responses:
+        "201":
+          description: The document was indexed in the tenant knowledge store.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoredMetricDocument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 components:
   securitySchemes:
     serviceToken:
@@ -194,6 +254,99 @@ components:
           minLength: 16
           maxLength: 64
         accepted_at:
+          type: string
+          format: date-time
+    ResumeRunRequest:
+      type: object
+      additionalProperties: false
+      required: [approval_id, decision, decided_by]
+      properties:
+        approval_id:
+          type: string
+          format: uuid
+        decision:
+          type: string
+          enum: [approved, rejected]
+        decided_by:
+          type: string
+          format: uuid
+        comment:
+          type: string
+          maxLength: 500
+    WorkflowResult:
+      type: object
+      additionalProperties: false
+      required: [run_id, status, state, updated_at]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PLANNING, WAITING_APPROVAL, COMPLETED, REJECTED, FAILED]
+        state:
+          type: object
+          additionalProperties: true
+        interrupt:
+          type: object
+          additionalProperties: true
+        updated_at:
+          type: string
+          format: date-time
+    KnowledgeIngestRequest:
+      type: object
+      additionalProperties: false
+      required: [title, source_name, source_type, content_base64]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 240
+        source_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        source_type:
+          type: string
+          enum: [MARKDOWN, PDF]
+        content_base64:
+          type: string
+          contentEncoding: base64
+          maxLength: 14000000
+    StoredMetricDocument:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, title, version, status, source_type, source_name, content_sha256, chunk_count, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [ACTIVE, SUPERSEDED]
+        source_type:
+          type: string
+          enum: [MARKDOWN, PDF]
+        source_name:
+          type: string
+        content_sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        chunk_count:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
     AgentStep:

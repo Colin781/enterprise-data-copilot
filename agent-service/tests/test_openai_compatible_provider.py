@@ -9,6 +9,7 @@ from app.llm.errors import (
     LLMAuthenticationError,
     LLMInvalidResponseError,
     LLMRateLimitError,
+    LLMRequestRejectedError,
     LLMTimeoutError,
     LLMUnavailableError,
 )
@@ -102,6 +103,7 @@ def test_local_compatible_provider_can_omit_authorization() -> None:
     ("status_code", "error_type"),
     [
         (401, LLMAuthenticationError),
+        (403, LLMRequestRejectedError),
         (429, LLMRateLimitError),
         (500, LLMUnavailableError),
         (504, LLMTimeoutError),
@@ -147,3 +149,46 @@ def test_provider_rejects_malformed_wire_response_without_leaking_body() -> None
 
     assert captured.value.code == "LLM_INVALID_RESPONSE"
     assert "customer-row-data" not in str(captured.value)
+
+
+def test_owned_client_is_recreated_across_sync_event_loops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class LoopBoundClient:
+        def __init__(self, *, base_url: str) -> None:
+            assert base_url == "https://llm.example/v1"
+            self.loop = asyncio.get_running_loop()
+            self.closed = False
+            clients.append(self)
+
+        async def __aenter__(self) -> "LoopBoundClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            self.closed = True
+
+        async def post(self, *_: object, **__: object) -> httpx.Response:
+            assert asyncio.get_running_loop() is self.loop
+            return httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": '{"answer":"ok"}'}}]},
+            )
+
+    clients: list[LoopBoundClient] = []
+    monkeypatch.setattr("app.llm.openai_compatible.httpx.AsyncClient", LoopBoundClient)
+    provider = OpenAICompatibleProvider(
+        provider_name="openai-compatible",
+        base_url="https://llm.example/v1/",
+        api_key=SecretStr("sk-private-test-key"),
+        model="vendor/model-v1",
+        connect_timeout_seconds=1,
+    )
+
+    first = run(provider.complete(make_request()))
+    second = run(provider.complete(make_request()))
+
+    assert first.content == '{"answer":"ok"}'  # type: ignore[union-attr]
+    assert second.content == '{"answer":"ok"}'  # type: ignore[union-attr]
+    assert len(clients) == 2
+    assert clients[0].loop is not clients[1].loop
+    assert all(client.closed for client in clients)
