@@ -6,6 +6,7 @@ from typing import Any, Protocol
 import httpx
 
 from app.agent.state import AgentState
+from app.observability import NODE_DURATION, NODE_ERRORS, agent_node_span, mark_span_error
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,33 +117,43 @@ def timed_step(
     started = monotonic_ns()
     input_summary = state_summary(state)
     attempt = int(state.get("attempts", 0))
-    try:
-        update = AgentState(operation(state))
-        merged = AgentState(state)
-        merged.update(update)
-        sink.record(
-            AgentStepRecord(
-                run_id=state["run_id"],
-                step_name=step_name,
-                status="SUCCEEDED",
-                attempt=attempt,
-                input_summary=input_summary,
-                output_summary=state_summary(merged),
-                duration_ms=max(0, (monotonic_ns() - started) // 1_000_000),
+    with agent_node_span(step_name, state["trace_id"]) as span:
+        try:
+            update = AgentState(operation(state))
+            merged = AgentState(state)
+            merged.update(update)
+            sink.record(
+                AgentStepRecord(
+                    run_id=state["run_id"],
+                    step_name=step_name,
+                    status="SUCCEEDED",
+                    attempt=attempt,
+                    input_summary=input_summary,
+                    output_summary=state_summary(merged),
+                    duration_ms=max(0, (monotonic_ns() - started) // 1_000_000),
+                )
             )
-        )
-        return update
-    except Exception as error:
-        sink.record(
-            AgentStepRecord(
-                run_id=state["run_id"],
-                step_name=step_name,
-                status="FAILED",
-                attempt=attempt,
-                input_summary=input_summary,
-                output_summary={},
-                duration_ms=max(0, (monotonic_ns() - started) // 1_000_000),
-                error_code=getattr(error, "code", error.__class__.__name__.upper()),
+            NODE_DURATION.labels(step_name, "succeeded").observe(
+                max(0, monotonic_ns() - started) / 1_000_000_000
             )
-        )
-        raise
+            return update
+        except Exception as error:
+            error_code = getattr(error, "code", error.__class__.__name__.upper())
+            sink.record(
+                AgentStepRecord(
+                    run_id=state["run_id"],
+                    step_name=step_name,
+                    status="FAILED",
+                    attempt=attempt,
+                    input_summary=input_summary,
+                    output_summary={},
+                    duration_ms=max(0, (monotonic_ns() - started) // 1_000_000),
+                    error_code=error_code,
+                )
+            )
+            NODE_DURATION.labels(step_name, "failed").observe(
+                max(0, monotonic_ns() - started) / 1_000_000_000
+            )
+            NODE_ERRORS.labels(step_name, error_code).inc()
+            mark_span_error(span, error, error_code)
+            raise

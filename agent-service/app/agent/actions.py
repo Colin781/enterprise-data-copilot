@@ -18,6 +18,7 @@ from app.nl2sql.models import NL2SQLDraft
 from app.nl2sql.prompts import generation_messages, repair_messages, selection_messages
 from app.nl2sql.question_guard import QuestionGuard
 from app.nl2sql.table_references import normalize_reported_tables
+from app.observability import SQL_REJECTIONS
 from app.query_safety.cost import QueryCostEstimator
 from app.query_safety.errors import SQLPolicyViolationError
 from app.query_safety.executor import QueryExecutor
@@ -70,6 +71,7 @@ class NorthwindAgentActions:
         try:
             question = self._question_guard.inspect(state["question"])
         except NL2SQLPolicyError as error:
+            SQL_REJECTIONS.labels(error.reason_code).inc()
             return AgentState(
                 sql_risk="blocked",
                 risk_reasons=[error.reason_code],
@@ -172,6 +174,7 @@ class NorthwindAgentActions:
         try:
             guarded = self._guard.inspect(state["sql"], policy)
         except SQLPolicyViolationError as error:
+            SQL_REJECTIONS.labels(error.reason_code).inc()
             return AgentState(
                 sql_risk="repair",
                 risk_reasons=[error.reason_code],

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 from app.llm.errors import LLMError, LLMInvalidResponseError, LLMTimeoutError
 from app.llm.models import LLMMessage, LLMRequest, StructuredLLMResult
 from app.llm.provider import LLMProvider
+from app.observability import record_model_tokens
 
 logger = logging.getLogger(__name__)
 StructuredOutputT = TypeVar("StructuredOutputT", bound=BaseModel)
@@ -86,7 +87,7 @@ class StructuredLLMClient:
                 await self._schedule_retry(error, attempt)
                 continue
 
-            return StructuredLLMResult[response_model](
+            result = StructuredLLMResult[response_model](
                 output=output,
                 provider=self._provider.provider_name,
                 model=completion.model,
@@ -94,6 +95,13 @@ class StructuredLLMClient:
                 attempts=attempt,
                 usage=completion.usage,
             )
+            record_model_tokens(
+                result.provider,
+                result.model,
+                result.usage.input_tokens,
+                result.usage.output_tokens,
+            )
+            return result
 
         raise AssertionError("The retry loop ended without a result or a classified error.")
 

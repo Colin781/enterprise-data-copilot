@@ -14,5 +14,11 @@ public interface AgentRunClient {
             String idempotencyKey);
 
     AgentResumeResult resume(
-            UUID jobId, UUID tenantId, UUID approvalId, UUID decidedBy, String decision, String comment);
+            UUID jobId,
+            UUID tenantId,
+            UUID approvalId,
+            UUID decidedBy,
+            String decision,
+            String comment,
+            String traceId);
 }

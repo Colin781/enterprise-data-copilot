@@ -1,0 +1,131 @@
+services:
+  platform-api:
+    build:
+      context: ./platform-api
+    environment:
+      PLATFORM_DB_HOST: platform-db
+      PLATFORM_DB_PORT: 5432
+      PLATFORM_DB_NAME: ${PLATFORM_DB_NAME}
+      PLATFORM_DB_USER: ${PLATFORM_DB_USER}
+      PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PLATFORM_API_PORT: 8080
+      PLATFORM_JWT_SECRET: ${PLATFORM_JWT_SECRET}
+      PLATFORM_JWT_ISSUER: ${PLATFORM_JWT_ISSUER}
+      PLATFORM_ACCESS_TOKEN_TTL: ${PLATFORM_ACCESS_TOKEN_TTL}
+      PLATFORM_BOOTSTRAP_ENABLED: ${PLATFORM_BOOTSTRAP_ENABLED}
+      PLATFORM_BOOTSTRAP_TENANT_SLUG: ${PLATFORM_BOOTSTRAP_TENANT_SLUG}
+      PLATFORM_BOOTSTRAP_TENANT_NAME: ${PLATFORM_BOOTSTRAP_TENANT_NAME}
+      PLATFORM_BOOTSTRAP_ADMIN_EMAIL: ${PLATFORM_BOOTSTRAP_ADMIN_EMAIL}
+      PLATFORM_BOOTSTRAP_ANALYST_EMAIL: ${PLATFORM_BOOTSTRAP_ANALYST_EMAIL}
+      PLATFORM_BOOTSTRAP_PASSWORD: ${PLATFORM_BOOTSTRAP_PASSWORD}
+      PLATFORM_DATA_SOURCE_ALLOWED_HOSTS: ${PLATFORM_DATA_SOURCE_ALLOWED_HOSTS:-business-db}
+      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN}
+      AGENT_SERVICE_URL: http://agent-service:8000
+      AGENT_CONNECT_TIMEOUT: ${AGENT_CONNECT_TIMEOUT:-PT3S}
+      AGENT_REQUEST_TIMEOUT: ${AGENT_REQUEST_TIMEOUT:-PT60S}
+    ports:
+      - "${PLATFORM_API_HTTP_PORT:-8080}:8080"
+    depends_on:
+      platform-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      agent-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    restart: unless-stopped
+
+  agent-service:
+    build:
+      context: ./agent-service
+    environment:
+      AGENT_SERVICE_NAME: ${AGENT_SERVICE_NAME:-agent-service}
+      AGENT_ENVIRONMENT: ${AGENT_ENVIRONMENT:-production}
+      AGENT_VERSION: ${AGENT_VERSION:-0.1.0}
+      BUSINESS_DB_HOST: business-db
+      BUSINESS_DB_PORT: 5432
+      BUSINESS_DB_NAME: ${BUSINESS_DB_NAME}
+      BUSINESS_DB_READONLY_USER: ${BUSINESS_DB_READONLY_USER}
+      BUSINESS_DB_READONLY_PASSWORD: ${BUSINESS_DB_READONLY_PASSWORD}
+      BUSINESS_DB_ALLOWED_SCHEMA: ${BUSINESS_DB_ALLOWED_SCHEMA:-northwind}
+      PLATFORM_DB_HOST: platform-db
+      PLATFORM_DB_PORT: 5432
+      PLATFORM_DB_NAME: ${PLATFORM_DB_NAME}
+      PLATFORM_DB_USER: ${PLATFORM_DB_USER}
+      PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD}
+      AGENT_WORKFLOW_CHECKPOINT_DSN: postgresql://${PLATFORM_DB_USER}:${PLATFORM_DB_PASSWORD}@platform-db:5432/${PLATFORM_DB_NAME}
+      AGENT_WORKFLOW_PLATFORM_API_URL: http://platform-api:8080
+      AGENT_WORKFLOW_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN}
+      AGENT_WORKFLOW_MAX_REPAIRS: ${AGENT_WORKFLOW_MAX_REPAIRS:-2}
+      AGENT_WORKFLOW_MINIMUM_CONFIDENCE: ${AGENT_WORKFLOW_MINIMUM_CONFIDENCE:-0.65}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
+      LLM_STRUCTURED_OUTPUT_MODE: ${LLM_STRUCTURED_OUTPUT_MODE:-json_schema}
+      OBSERVABILITY_TRACING_ENABLED: ${OBSERVABILITY_TRACING_ENABLED:-true}
+      OBSERVABILITY_METRICS_ENABLED: ${OBSERVABILITY_METRICS_ENABLED:-true}
+      OBSERVABILITY_OTLP_HTTP_ENDPOINT: ${OBSERVABILITY_OTLP_HTTP_ENDPOINT:-}
+      LANGGRAPH_STRICT_MSGPACK: ${LANGGRAPH_STRICT_MSGPACK:-true}
+    ports:
+      - "${AGENT_SERVICE_HTTP_PORT:-8000}:8000"
+    depends_on:
+      platform-db:
+        condition: service_healthy
+      business-db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+    environment:
+      PLATFORM_API_URL: http://platform-api:8080
+    ports:
+      - "${WEB_HTTP_PORT:-3000}:3000"
+    depends_on:
+      platform-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=24h"]
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PROMETHEUS_HTTP_PORT:-9090}:9090"
+    depends_on:
+      platform-api:
+        condition: service_healthy
+      agent-service:
+        condition: service_healthy
+    restart: unless-stopped

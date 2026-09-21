@@ -119,6 +119,7 @@ class ApprovalWorkflowIntegrationTest extends PostgresIntegrationTest {
                         eq(pending.id()),
                         eq(admin.getId()),
                         eq("approved"),
+                        any(),
                         any()))
                 .thenReturn(new AgentResumeResult(job.getId().toString(), "COMPLETED"));
         var caller = new Caller(admin.getId(), tenant.getId(), Set.of("ADMIN"));
@@ -139,6 +140,7 @@ class ApprovalWorkflowIntegrationTest extends PostgresIntegrationTest {
                         eq(pending.id()),
                         eq(admin.getId()),
                         eq("approved"),
+                        any(),
                         any());
     }
 }

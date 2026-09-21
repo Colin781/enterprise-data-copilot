@@ -61,6 +61,16 @@ flowchart LR
 6. 查询在只读事务内执行，并受 statement timeout、行/列/响应字节上限约束。
 7. 图表只使用校验后的结构化规范，不执行模型生成的代码。
 8. PostgreSQL 保存最终任务状态，Redis 丢失不得导致已完成任务不可追溯。
+9. 入站请求使用 W3C `traceparent`；Java/Python 只把低基数、脱敏属性写入 trace 和指标。
+10. 公开演示只能登记部署 allowlist 中的数据源主机，DSN 和 secret reference 永不出现在 API 响应。
+
+## 可观测性边界
+
+- Java 使用 Micrometer 暴露 HTTP 与 Agent client histogram/counter。
+- Python 为每个 LangGraph 节点建立 OpenTelemetry span，并暴露 HTTP、节点、Token 和 SQL 拒绝指标。
+- `trace_id` 可以出现在任务、审计与错误响应中；span id 每次跨进程或节点重新生成。
+- question、SQL 文本、邮箱、凭据、DSN 与结果行禁止成为 span attribute、metric label 或普通步骤日志。
+- Prometheus 是短期观测组件，不是审计权威源；审计与最终状态仍保存在 PostgreSQL。
 
 ## 主要请求时序
 

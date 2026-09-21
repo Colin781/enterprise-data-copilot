@@ -34,6 +34,10 @@ platform:
   agent:
     service-token: ${AGENT_SERVICE_TOKEN}
     base-url: ${AGENT_SERVICE_URL:http://localhost:8000}
+    connect-timeout: ${AGENT_CONNECT_TIMEOUT:PT3S}
+    request-timeout: ${AGENT_REQUEST_TIMEOUT:PT60S}
+  data-source-registration:
+    allowed-hosts: ${PLATFORM_DATA_SOURCE_ALLOWED_HOSTS:business-db,localhost,127.0.0.1}
   execution:
     enabled: ${ANALYSIS_ASYNC_ENABLED:true}
     core-pool-size: ${ANALYSIS_ASYNC_CORE_POOL_SIZE:2}
@@ -60,9 +64,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
   endpoint:
     health:
       probes:
         enabled: true
       show-details: never
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        copilot.agent.client.duration: true

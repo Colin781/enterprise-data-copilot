@@ -32,6 +32,10 @@ platform:
   agent:
     service-token: test-only-agent-service-token
     base-url: http://localhost:1
+    connect-timeout: PT0.1S
+    request-timeout: PT0.1S
+  data-source-registration:
+    allowed-hosts: business-db,localhost,127.0.0.1
   execution:
     enabled: false
     core-pool-size: 1

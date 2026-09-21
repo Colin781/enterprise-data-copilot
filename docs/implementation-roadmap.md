@@ -1,5 +1,9 @@
 # 实施计划审视与收敛版路线
 
+## 当前执行状态（2026-09-18）
+
+P0～P12 的仓库内范围已全部完成，项目进入维护状态。最终证据入口为 `make verify-all`、`evaluation/northwind/p10-offline-baseline.json`、`evaluation/p11-local-performance.json`、`docs/stage-11-observability-deployment.md` 与 `docs/stage-12-portfolio-handoff.md`。公网域名/TLS、云端 Secret Manager、真人录屏和对外发布链接属于仓库外发布动作，不作为未完成代码里程碑，也不得伪造为已发布。
+
 ## 总体判断
 
 原计划的产品目标、Java/Python 边界和安全方向是合理的，足以支撑一个有工程说服力的作品集。主要风险不是功能不足，而是并行目标过多：多租户、审批、RAG、NL2SQL、SSE、可观测性和三端 UI 同时推进，会让安全正确性与评测证据成为最后补做的内容。

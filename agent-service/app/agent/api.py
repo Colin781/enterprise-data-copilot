@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent.models import ApprovalResume, StartRun, WorkflowResult
 from app.agent.service import AgentWorkflowService, WorkflowConflictError, WorkflowIdentityError
+from app.observability import trace_id_from_traceparent
 from app.settings import AgentWorkflowSettings, get_agent_workflow_settings
 
 router = APIRouter(prefix="/internal/v1/runs", tags=["runs"])
@@ -48,10 +49,10 @@ def authorize_service(
 
 
 def trace_id(traceparent: str) -> str:
-    parts = traceparent.split("-")
-    if len(parts) != 4 or len(parts[1]) != 32:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid traceparent")
-    return parts[1]
+    try:
+        return trace_id_from_traceparent(traceparent)
+    except ValueError as error:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid traceparent") from error
 
 
 @router.post(

@@ -86,6 +86,13 @@ public class GlobalExceptionHandler {
                 request);
     }
 
+    @ExceptionHandler(DataSourceHostNotAllowedException.class)
+    ResponseEntity<ApiError> dataSourceHostNotAllowed(
+            DataSourceHostNotAllowedException exception, HttpServletRequest request) {
+        return response(
+                HttpStatus.UNPROCESSABLE_CONTENT, "DATA_SOURCE_HOST_NOT_ALLOWED", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> unexpected(Exception exception, HttpServletRequest request) {
         return response(

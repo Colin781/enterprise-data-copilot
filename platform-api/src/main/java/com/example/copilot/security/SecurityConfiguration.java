@@ -85,7 +85,7 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/internal/**")
                         .permitAll()
-                        .requestMatchers("/health", "/actuator/health", "/api/auth/login")
+                        .requestMatchers("/health", "/actuator/health", "/actuator/prometheus", "/api/auth/login")
                         .permitAll()
                         .anyRequest()
                         .authenticated())

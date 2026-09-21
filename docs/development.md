@@ -2,21 +2,37 @@
 
 ## 前置工具
 
+若只运行完整 Compose 栈，本机只需 Docker 与 Compose；下面这些宿主机工具用于热重载开发和本机验收。
+
 - Java 21（项目包含 Maven Wrapper，无需全局 Maven）
 - Python 3.12 与 uv
 - Node.js 22+ 与 pnpm 11
 - Docker Desktop / Docker Engine 与 Compose
 
-## 第一次启动
+## 第一次启动：选择一种模式
+
+完整容器模式（新使用者推荐）：
 
 ```bash
 make env
-make compose-up
+# 先按 .env.example 修改 .env 中的示例密钥、JWT secret、服务 token 和模型配置
+make stack-config
+make stack-up
+```
+
+它会启动 Web、Platform、Agent、两套 PostgreSQL、Redis 和 Prometheus，并加载固定 Northwind 数据。Web 为 `http://localhost:3000`，Prometheus 为 `http://localhost:9090`。查看状态使用 `docker compose -f docker-compose.yml -f docker-compose.full.yml ps`；停止使用 `make stack-down`，数据库卷保留。真实模型分析才需要有效 `LLM_API_KEY`；本地健康检查和危险问题拒绝不调用模型。
+
+需要本机热重载时，先确保完整栈已停止，再执行：
+
+```bash
+make env
 make setup
 make dev
 ```
 
-`make env` 只在 `.env` 不存在时复制模板。`.env` 已被 Git 忽略；其中的本地密码仍应按个人环境修改。
+`make dev` 已包含 `compose-up`，会启动数据库与 Redis，并并行运行三个应用服务；首次排错可改为 `make compose-up` 后在三个终端分别启动各服务。两种模式共用 3000/8000/8080 端口，不能并行运行。
+
+`make env` 只在 `.env` 不存在时复制模板。`.env` 已被 Git 忽略；其中的本地密码仍应按个人环境修改。不要直接 `source .env`：模板含带空格的值，应让 Makefile 读取它。两个服务令牌 `AGENT_SERVICE_TOKEN` 与 `AGENT_WORKFLOW_SERVICE_TOKEN` 在开发模式必须相同；完整 Compose 模式从前者向两端注入同一个值。已有数据库用户的密码不会因更改 bootstrap 环境变量而自动轮换。
 
 如果 `.env` 是 P3 之前创建的，请从 `.env.example` 补入 `PLATFORM_JWT_SECRET`、`PLATFORM_JWT_ISSUER` 和 `PLATFORM_ACCESS_TOKEN_TTL`。JWT secret 至少需要 32 字节，不能使用模板值部署到真实环境。
 
@@ -154,6 +170,49 @@ make verify-p9
 ```
 
 P9 验收使用本地锁定并已安装的 Node 二进制执行 Web 安全测试、lint、类型检查和 production build，并联动 Java/Python 的必要接口测试。图表是固定 JSON schema 到 React SVG 的映射，禁止任意代码与原始 HTML 执行。
+
+## P10 完整评测
+
+先启动并加载固定数据库，然后运行完整的离线验收：
+
+```bash
+make compose-up
+make verify-p10
+make p10-eval
+```
+
+`verify-p10` 会执行 55 条 Northwind NL2SQL gold SQL 的真实 PostgreSQL 结果对比、20 条危险请求阻断、24 条 RAG 评测，以及 Java 使用 WireMock 模拟 Agent Service 超时、500 和非法响应的边界测试。`p10-eval` 生成 `evaluation/northwind/p10-offline-baseline.json`。
+
+离线模式使用 gold SQL 回放来验证评测管线、SQL guard 和只读执行器，不代表真实模型准确率。只有明确允许向配置的模型服务发送 55 条问题及 Northwind schema 后，才运行：
+
+```bash
+make p10-eval-real
+```
+
+真实模型模式至少会产生每题选表和 SQL 生成两次模型调用，重试会增加调用次数。需要计算费用时，通过 `P10_MODEL_PRICE_ARGS` 传入 `--input-cost-per-million` 与 `--output-cost-per-million`；没有明确价格时报告把费用保留为 `null`，不会猜测。
+
+## P11 全栈部署与可观测性
+
+日常热重载继续使用 `make dev`。验证生产镜像、健康依赖与 Prometheus 抓取时使用：
+
+```bash
+make env
+make stack-config
+make stack-up
+```
+
+完整栈增加 Platform `/actuator/prometheus`、Agent `/metrics` 和本地 Prometheus `http://localhost:9090`。`make verify-p11` 校验 W3C trace、Python 节点 span、指标和 Compose；`make p11-load` 运行不会调用模型的并发创建任务/SSE 测试。
+
+公网发布必须替换所有示例密钥，并把 `PLATFORM_DATA_SOURCE_ALLOWED_HOSTS` 收敛到演示数据库服务名。
+
+## P12 最终验收
+
+```bash
+make verify-p12
+make verify-all
+```
+
+`verify-p12` 交叉检查 README、ADR、评测数据量和部署/负载资产。公网 Demo、GitHub Project、三张成功截图和 5～7 分钟录屏需要真实账号或人工发布，不能由本地测试伪造。
 
 ## 端口
 

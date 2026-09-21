@@ -1,6 +1,7 @@
 package com.example.copilot.datasource.service;
 
 import com.example.copilot.audit.service.AuditService;
+import com.example.copilot.common.api.DataSourceHostNotAllowedException;
 import com.example.copilot.datasource.api.CreateDataSourceRequest;
 import com.example.copilot.datasource.api.DataSourceResource;
 import com.example.copilot.datasource.domain.DataSource;
@@ -16,14 +17,22 @@ public class DataSourceManagementService {
 
     private final DataSourceRepository dataSourceRepository;
     private final AuditService auditService;
+    private final DataSourceRegistrationProperties registrationProperties;
 
-    public DataSourceManagementService(DataSourceRepository dataSourceRepository, AuditService auditService) {
+    public DataSourceManagementService(
+            DataSourceRepository dataSourceRepository,
+            AuditService auditService,
+            DataSourceRegistrationProperties registrationProperties) {
         this.dataSourceRepository = dataSourceRepository;
         this.auditService = auditService;
+        this.registrationProperties = registrationProperties;
     }
 
     @Transactional
     public DataSourceResource create(CreateDataSourceRequest request, Caller caller, String traceId) {
+        if (!registrationProperties.allows(request.host())) {
+            throw new DataSourceHostNotAllowedException();
+        }
         var dataSource = dataSourceRepository.save(new DataSource(
                 UUID.randomUUID(),
                 caller.tenantId(),

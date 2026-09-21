@@ -1,0 +1,81 @@
+{
+  "report_version": "1.0",
+  "measured_at": "2026-09-18T13:40:00Z",
+  "scope": "local_no_model_cost_rejected_query_and_sse",
+  "environment": {
+    "os": "macOS 26.5.1",
+    "architecture": "arm64",
+    "java": "21.0.12.1",
+    "python_toolchain": "uv 0.12.13 / CPython 3.12",
+    "node": "24.21.0",
+    "docker_server": "29.7.2"
+  },
+  "scenario": {
+    "tool": "k6 1.0.0",
+    "virtual_users": 5,
+    "duration_seconds": 10,
+    "question_class": "deterministically_blocked_write_request",
+    "external_model_calls": 0,
+    "completed_iterations": 717,
+    "interrupted_iterations": 0,
+    "http_requests": 1436,
+    "terminal_sse_events": 717
+  },
+  "metrics": {
+    "error_rate": 0.0,
+    "checks_succeeded_rate": 1.0,
+    "analysis_create_ms": {
+      "average": 5.08,
+      "p95": 7.54,
+      "max": 71.69
+    },
+    "analysis_sse_terminal_ms": {
+      "average": 64.59,
+      "p95": 85.71,
+      "max": 323.26
+    },
+    "http_request_ms": {
+      "average": 35.02,
+      "p95": 76.2,
+      "max": 323.26
+    }
+  },
+  "thresholds": {
+    "error_rate_less_than": 0.01,
+    "analysis_create_p95_ms_less_than": 2000,
+    "analysis_sse_p95_ms_less_than": 5000,
+    "passed": true
+  },
+  "failure_validation": {
+    "wiremock_cases": 5,
+    "covered": [
+      "agent_http_500",
+      "agent_timeout",
+      "malformed_json",
+      "incomplete_response",
+      "successful_response"
+    ]
+  },
+  "deployment_validation": {
+    "compose_services_running": 7,
+    "compose_healthchecks_healthy": 6,
+    "prometheus_ready": true,
+    "production_images_built": [
+      "platform-api",
+      "agent-service",
+      "web"
+    ],
+    "prometheus_targets_up": [
+      "platform-api",
+      "agent-service"
+    ],
+    "web_proxy_login_http_status": 200,
+    "end_to_end_terminal_status": "REJECTED",
+    "w3c_trace_propagated": true
+  },
+  "limitations": [
+    "This is a single-machine local result, not a public-cloud capacity or SLA claim.",
+    "The scenario is rejected before model generation, so model latency, tokens, and cost are excluded.",
+    "The test uses the fixed Northwind demo and warm local dependencies."
+  ]
+}

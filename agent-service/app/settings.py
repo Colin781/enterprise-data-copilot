@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, SecretStr
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -143,6 +143,26 @@ class AgentWorkflowSettings(BaseSettings):
     minimum_confidence: float = Field(default=0.65, ge=0, le=1)
 
 
+class ObservabilitySettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_prefix="OBSERVABILITY_",
+        extra="ignore",
+    )
+
+    tracing_enabled: bool = True
+    metrics_enabled: bool = True
+    otlp_http_endpoint: AnyHttpUrl | None = None
+
+    @field_validator("otlp_http_endpoint", mode="before")
+    @classmethod
+    def empty_otlp_endpoint_means_disabled(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
@@ -181,3 +201,8 @@ def get_retrieval_settings() -> RetrievalSettings:
 @lru_cache
 def get_agent_workflow_settings() -> AgentWorkflowSettings:
     return AgentWorkflowSettings()
+
+
+@lru_cache
+def get_observability_settings() -> ObservabilitySettings:
+    return ObservabilitySettings()

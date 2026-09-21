@@ -200,6 +200,33 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
     }
 
     @Test
+    void deploymentAllowlistRejectsArbitraryPublicDatabaseHosts() throws Exception {
+        createUser("alpha", "admin@alpha.test", UserRole.ADMIN);
+        var token = login("alpha", "admin@alpha.test");
+        var body =
+                """
+                {
+                  "name": "untrusted",
+                  "host": "public-database.example.com",
+                  "port": 5432,
+                  "database_name": "production",
+                  "allowed_schema": "public",
+                  "secret_ref": "vault:production/database"
+                }
+                """;
+
+        mockMvc.perform(post("/api/data-sources")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("DATA_SOURCE_HOST_NOT_ALLOWED"))
+                .andExpect(jsonPath("$.message").value("The data source host is not available in this deployment."));
+
+        assertThat(dataSourceRepository.count()).isZero();
+    }
+
+    @Test
     void onlyAdministratorCanUploadMetricKnowledgeThroughThePlatformBoundary() throws Exception {
         var admin = createUser("alpha", "admin@alpha.test", UserRole.ADMIN);
         createUser(admin.tenant(), "analyst@alpha.test", UserRole.ANALYST);

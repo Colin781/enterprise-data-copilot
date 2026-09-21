@@ -39,7 +39,7 @@ class QuestionGuard:
             raise NL2SQLPolicyError("SECRET_REQUEST_NOT_ALLOWED")
         if re.search(r"其他租户|其它租户|别的租户|跨租户", normalized):
             raise NL2SQLPolicyError("CROSS_TENANT_REQUEST_NOT_ALLOWED")
-        if re.search(r"身份证|社会安全号", normalized):
+        if re.search(r"身份证|社会安全号|\bsocial security number\b|\bssn\b", normalized, re.I):
             raise NL2SQLPolicyError("SENSITIVE_DATA_NOT_ALLOWED")
         if self._CODE.search(normalized) or re.search(r"运行.{0,20}Python", normalized, re.I):
             raise NL2SQLPolicyError("ARBITRARY_CODE_NOT_ALLOWED")

@@ -101,8 +101,23 @@ jobs:
         run: make verify-p6
       - name: Verify durable LangGraph recovery and approval guards
         run: make verify-p7
+      - name: Verify complete P10 evaluation harness and datasets
+        run: make verify-p10
+      - name: Verify P11 trace, metrics and deployment assets
+        run: make verify-p11
+      - name: Verify P12 portfolio evidence
+        run: make verify-p12
       - name: Verify async dispatch, Redis progress and SSE replay
         run: make verify-p8
       - name: Clean up infrastructure
         if: always()
         run: docker compose --env-file .env.example down -v --remove-orphans
+
+  container-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate full-stack Compose
+        run: docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.full.yml config --quiet
+      - name: Build production service images
+        run: docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.full.yml build platform-api agent-service web

@@ -1,16 +1,17 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from pydantic import BaseModel
 
 from app.agent.api import router as agent_router
 from app.agent.factory import create_production_workflow_service
+from app.observability import configure_observability, observe_http, prometheus_response
 from app.retrieval.api import router as knowledge_router
 from app.retrieval.factory import create_production_retrieval_service
-from app.settings import get_settings
+from app.settings import get_observability_settings, get_settings
 
 
 class HealthResponse(BaseModel):
@@ -21,6 +22,8 @@ class HealthResponse(BaseModel):
 
 
 settings = get_settings()
+observability = get_observability_settings()
+configure_observability(settings, observability)
 
 
 @asynccontextmanager
@@ -43,6 +46,15 @@ app.include_router(agent_router)
 app.include_router(knowledge_router)
 
 
+@app.middleware("http")
+async def metrics_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    if not observability.metrics_enabled:
+        return await call_next(request)
+    return await observe_http(request, call_next)
+
+
 @app.get("/health", response_model=HealthResponse, tags=["operations"])
 async def health() -> HealthResponse:
     return HealthResponse(
@@ -51,3 +63,10 @@ async def health() -> HealthResponse:
         version=settings.version,
         timestamp=datetime.now(UTC),
     )
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics() -> Response:
+    if not observability.metrics_enabled:
+        return Response(status_code=404)
+    return prometheus_response()

@@ -81,8 +81,8 @@ public class ApprovalService {
                 .findByIdAndTenantId(approval.getAnalysisJobId(), caller.tenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("The analysis job was not found."));
         var command = decision == ApprovalStatus.APPROVED ? "approved" : "rejected";
-        var result =
-                agentRunClient.resume(job.getId(), caller.tenantId(), approvalId, caller.userId(), command, comment);
+        var result = agentRunClient.resume(
+                job.getId(), caller.tenantId(), approvalId, caller.userId(), command, comment, job.getTraceId());
         approval.decide(decision, caller.userId(), comment);
         if (decision == ApprovalStatus.REJECTED) {
             job.transitionTo(AnalysisJobStatus.REJECTED);

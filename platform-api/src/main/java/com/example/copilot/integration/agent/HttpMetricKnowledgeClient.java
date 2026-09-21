@@ -1,12 +1,9 @@
 package com.example.copilot.integration.agent;
 
+import com.example.copilot.common.TraceContext;
 import com.example.copilot.knowledge.api.MetricDocumentResource;
 import com.example.copilot.knowledge.api.MetricDocumentUploadRequest;
 import java.net.http.HttpClient;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -41,7 +38,7 @@ public class HttpMetricKnowledgeClient implements MetricKnowledgeClient {
                 .header("Authorization", "Bearer " + serviceToken)
                 .header("X-Tenant-Id", tenantId.toString())
                 .header("X-User-Id", userId.toString())
-                .header("traceparent", traceparent(traceId))
+                .header("traceparent", TraceContext.childTraceparent(traceId))
                 .body(Map.of(
                         "title", request.title().trim(),
                         "source_name", request.sourceName(),
@@ -51,21 +48,5 @@ public class HttpMetricKnowledgeClient implements MetricKnowledgeClient {
                 .body(String.class);
 
         return objectMapper.readValue(response, MetricDocumentResource.class);
-    }
-
-    private static String traceparent(String traceId) {
-        var normalized = traceId.matches("[0-9a-fA-F]{32}")
-                ? traceId.toLowerCase()
-                : sha256(traceId).substring(0, 32);
-        return "00-" + normalized + "-0000000000000001-01";
-    }
-
-    private static String sha256(String value) {
-        try {
-            return HexFormat.of()
-                    .formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is unavailable", exception);
-        }
     }
 }
