@@ -80,6 +80,9 @@ public class AnalysisJob {
     @Column(columnDefinition = "text")
     private String resultRowsJson;
 
+    @Column(nullable = false)
+    private boolean resultTruncated;
+
     @Column(columnDefinition = "text")
     private String chartSpecJson;
 
@@ -200,7 +203,7 @@ public class AnalysisJob {
     }
 
     public void storeAgentResult(String sql, String answer, String errorCode) {
-        storeAgentResult(sql, answer, errorCode, null, null, null, null);
+        storeAgentResult(sql, answer, errorCode, null, null, false, null, null);
     }
 
     public void storeAgentResult(
@@ -209,6 +212,7 @@ public class AnalysisJob {
             String errorCode,
             String resultColumnsJson,
             String resultRowsJson,
+            boolean resultTruncated,
             String chartSpecJson,
             String citationsJson) {
         this.generatedSql = sql;
@@ -216,6 +220,7 @@ public class AnalysisJob {
         this.errorCode = errorCode;
         this.resultColumnsJson = resultColumnsJson;
         this.resultRowsJson = resultRowsJson;
+        this.resultTruncated = resultTruncated;
         this.chartSpecJson = chartSpecJson;
         this.citationsJson = citationsJson;
     }
@@ -226,6 +231,10 @@ public class AnalysisJob {
 
     public String getResultRowsJson() {
         return resultRowsJson;
+    }
+
+    public boolean isResultTruncated() {
+        return resultTruncated;
     }
 
     public String getChartSpecJson() {

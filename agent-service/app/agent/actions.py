@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from sqlglot import exp, parse_one
 
+from app.agent.answering import describe_sql_result
 from app.agent.charting import build_chart_spec
 from app.agent.state import AgentState
 from app.data_sources.models import DataSourceConfig
@@ -206,6 +207,7 @@ class NorthwindAgentActions:
         return AgentState(
             columns=list(result.columns),
             rows=list(result.rows),
+            result_truncated=result.truncated,
             error_code=None,
         )
 
@@ -227,7 +229,11 @@ class NorthwindAgentActions:
             evidence = state.get("metric_context", [])
             answer = evidence[0]["content"] if evidence else ""
         else:
-            answer = f"Query completed with {len(state.get('rows', []))} row(s)."
+            answer = describe_sql_result(
+                state.get("columns", []),
+                state.get("rows", []),
+                truncated=state.get("result_truncated", False),
+            )
         chart_spec = build_chart_spec(state.get("columns", []), state.get("rows", []))
         return AgentState(answer=answer, chart_spec=chart_spec.model_dump(mode="json"))
 

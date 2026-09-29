@@ -35,6 +35,7 @@ class StartRun(BaseModel):
             citations=[],
             rows=[],
             columns=[],
+            result_truncated=False,
             error_code=None,
         )
 

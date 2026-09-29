@@ -38,6 +38,11 @@ platform:
     request-timeout: ${AGENT_REQUEST_TIMEOUT:PT60S}
   data-source-registration:
     allowed-hosts: ${PLATFORM_DATA_SOURCE_ALLOWED_HOSTS:business-db,localhost,127.0.0.1}
+    demo-host: ${BUSINESS_DB_HOST:localhost}
+    demo-port: ${BUSINESS_DB_PORT:5433}
+    demo-database-name: ${BUSINESS_DB_NAME:northwind}
+    demo-allowed-schema: ${BUSINESS_DB_ALLOWED_SCHEMA:northwind}
+    demo-secret-ref: env:BUSINESS_DB_READONLY_PASSWORD
   execution:
     enabled: ${ANALYSIS_ASYNC_ENABLED:true}
     core-pool-size: ${ANALYSIS_ASYNC_CORE_POOL_SIZE:2}

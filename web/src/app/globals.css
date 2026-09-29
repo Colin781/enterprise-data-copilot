@@ -118,6 +118,7 @@ label input { min-height: 43px; padding: 0 .8rem; font-weight: 400; }
 .status-pill.cancelled { color: var(--muted); background: rgb(145 170 158 / 9%); }
 
 .result-panel { min-height: 350px; overflow: hidden; }
+.result-truncated { margin: .8rem 1.2rem 0; padding: .65rem .8rem; border: 1px solid rgb(245 185 76 / 35%); border-radius: 7px; color: var(--amber); background: rgb(245 185 76 / 8%); font-size: 11px; }
 .tabs { display: flex; gap: .2rem; padding: .65rem .8rem 0; border-bottom: 1px solid var(--border-soft); }
 .tabs button { padding: .65rem .8rem; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 11px; }
 .tabs button.active { border-color: var(--accent); color: var(--text); }

@@ -200,6 +200,65 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
     }
 
     @Test
+    void demoRegistrationRejectsOtherDatabaseAndExistingMismatchedSourceCannotBeQueried() throws Exception {
+        var analyst = createUser("alpha", "analyst@alpha.test", UserRole.ANALYST);
+        var admin = createUser(analyst.tenant(), "admin@alpha.test", UserRole.ADMIN);
+        var adminToken = login("alpha", "admin@alpha.test");
+        var analystToken = login("alpha", "analyst@alpha.test");
+        var otherDatabase = dataSourceRequest("other").replace("\"northwind\"", "\"other_database\"");
+
+        mockMvc.perform(post("/api/data-sources")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(otherDatabase))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("DEMO_DATA_SOURCE_ONLY"));
+
+        var oldSource = dataSourceRepository.save(new DataSource(
+                UUID.randomUUID(),
+                analyst.tenant().getId(),
+                "old source",
+                "business-db",
+                5432,
+                "other_database",
+                "public",
+                "env:BUSINESS_DB_READONLY_PASSWORD"));
+        mockMvc.perform(get("/api/data-sources").header("Authorization", bearer(analystToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+        mockMvc.perform(post("/api/analysis/jobs")
+                        .header("Authorization", bearer(analystToken))
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jobRequest(oldSource.getId(), "sales by month")))
+                .andExpect(status().isNotFound());
+        assertThat(jobRepository.count()).isZero();
+        assertThat(admin.user().getTenantId()).isEqualTo(analyst.tenant().getId());
+    }
+
+    @Test
+    void resultTruncationIsPersistedAndReturnedToTheBrowser() throws Exception {
+        var analyst = createUser("alpha", "analyst@alpha.test", UserRole.ANALYST);
+        var source = dataSourceRepository.save(dataSource(analyst.tenant().getId(), "northwind"));
+        var job = new AnalysisJob(
+                UUID.randomUUID(),
+                analyst.tenant().getId(),
+                source.getId(),
+                analyst.user().getId(),
+                "sales by month",
+                IDEMPOTENCY_KEY,
+                "0".repeat(64),
+                "1".repeat(32));
+        job.storeAgentResult(null, "partial result", null, "[\"sales\"]", "[{\"sales\":1}]", true, null, null);
+        jobRepository.save(job);
+
+        mockMvc.perform(get("/api/analysis/jobs/{id}", job.getId())
+                        .header("Authorization", bearer(login("alpha", "analyst@alpha.test"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result_truncated").value(true));
+    }
+
+    @Test
     void deploymentAllowlistRejectsArbitraryPublicDatabaseHosts() throws Exception {
         createUser("alpha", "admin@alpha.test", UserRole.ADMIN);
         var token = login("alpha", "admin@alpha.test");

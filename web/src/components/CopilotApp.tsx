@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, actionableError } from "@/lib/api";
-import { streamJobEvents } from "@/lib/sse";
+import { watchJobEvents } from "@/lib/sse";
 import type { AgentStep, AnalysisJob, Approval, DataSource, MetricDocument, Session } from "@/lib/types";
 import { StructuredChart } from "./StructuredChart";
 
@@ -29,6 +29,7 @@ const jobErrorMessages: Record<string, string> = {
   LLM_UNAVAILABLE: "模型服务暂时不可用，请稍后重试。",
   AGENT_WORKFLOW_FAILED: "Agent 工作流执行失败，请查看执行轨迹。",
   AGENT_DISPATCH_FAILED: "平台无法调用 Agent 服务，请检查服务日志。",
+  DATA_SOURCE_NOT_AVAILABLE: "该任务的数据源不再与当前 Northwind 演示配置匹配，请重新选择可用源。",
 };
 
 export function CopilotApp() {
@@ -141,7 +142,7 @@ function AnalysisView({ session, sources, initialJobs, onJobsChanged, onOpenAppr
   const [error, setError] = useState("");
   const [tab, setTab] = useState<ResultTab>("answer");
   const [elapsed, setElapsed] = useState(0);
-  const lastEvent = useRef<string | undefined>(undefined);
+  const lastEvent = useRef<{ jobId: string; id: string } | null>(null);
   const visibleJobs = useMemo(() => {
     const combined = [...jobs, ...initialJobs.filter((item) => !jobs.some((jobItem) => jobItem.id === item.id))];
     return combined.sort((left, right) => right.created_at.localeCompare(left.created_at));
@@ -162,11 +163,12 @@ function AnalysisView({ session, sources, initialJobs, onJobsChanged, onOpenAppr
   useEffect(() => {
     if (!job || terminal.has(job.status)) return;
     const controller = new AbortController();
-    void streamJobEvents(session.accessToken, job.id, (event) => {
-      lastEvent.current = event.event_id;
+    void watchJobEvents(session.accessToken, job.id, (event) => {
+      lastEvent.current = { jobId: job.id, id: event.event_id };
       setJob((current) => current ? { ...current, status: event.status, updated_at: event.occurred_at } : current);
       void reloadJob(job.id).catch(() => undefined);
-    }, controller.signal, lastEvent.current).catch(() => undefined);
+    }, controller.signal, lastEvent.current?.jobId === job.id ? lastEvent.current.id : undefined)
+      .catch((reason) => { if (!controller.signal.aborted) setError(actionableError(reason)); });
     const poll = window.setInterval(() => void reloadJob(job.id).catch(() => undefined), 3000);
     return () => { controller.abort(); window.clearInterval(poll); };
   }, [job?.id, job?.status, reloadJob, session.accessToken]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -181,7 +183,7 @@ function AnalysisView({ session, sources, initialJobs, onJobsChanged, onOpenAppr
     setSubmitting(true); setError("");
     try {
       const created = await api.createJob(session.accessToken, sourceId, question.trim());
-      setJobs((current) => [created, ...current]); setSelectedId(created.id); setJob(created); setQuestion(""); lastEvent.current = undefined;
+      setJobs((current) => [created, ...current]); setSelectedId(created.id); setJob(created); setQuestion(""); lastEvent.current = null;
       await onJobsChanged();
     } catch (reason) { setError(actionableError(reason)); }
     finally { setSubmitting(false); }
@@ -210,7 +212,8 @@ function AnalysisView({ session, sources, initialJobs, onJobsChanged, onOpenAppr
               {job.error_code && <div className="callout error">{jobErrorMessages[job.error_code] ?? `${job.error_code}：任务未完成，请查看执行轨迹。`}<small>Trace {job.trace_id}</small></div>}
             </section>
             <section className="result-panel panel"><div className="tabs" role="tablist">{(["answer", "table", "chart", "sql"] as ResultTab[]).map((item) => <button key={item} role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{({ answer: "结论", table: "数据表", chart: "图表", sql: "SQL" })[item]}</button>)}</div>
-              <div className="tab-content">{tab === "answer" && <Answer job={job} />}{tab === "table" && <ResultTable columns={job.columns} rows={job.rows} />}{tab === "chart" && <StructuredChart spec={job.chart} columns={job.columns} rows={job.rows} />}{tab === "sql" && <SqlPanel sql={job.generated_sql} />}</div>
+              {job.result_truncated && <p className="result-truncated" role="status">结果已按行数或响应大小上限截断；结论和图表仅基于显示的数据。</p>}
+              <div className="tab-content">{tab === "answer" && <Answer job={job} />}{tab === "table" && <ResultTable columns={job.columns} rows={job.rows} truncated={job.result_truncated} />}{tab === "chart" && <StructuredChart spec={job.chart} columns={job.columns} rows={job.rows} />}{tab === "sql" && <SqlPanel sql={job.generated_sql} />}</div>
             </section>
             <Timeline steps={steps} />
           </> : <div className="empty-state panel"><b>准备好开始第一次可信分析</b><p>选择数据源并提出一个零售经营问题，任务状态会在这里实时更新。</p></div>}
@@ -225,12 +228,12 @@ function Answer({ job }: { job: AnalysisJob }) {
     {!!job.citations.length && <div className="citations"><h4>指标依据</h4>{job.citations.map((citation, index) => <div key={`${citation.document_id}-${index}`}><b>{citation.document_title ?? "指标文档"} v{citation.document_version ?? "—"}</b><span>{citation.section_title ?? citation.section_key} · {citation.source_locator}</span></div>)}</div>}</div>;
 }
 
-function ResultTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
+function ResultTable({ columns, rows, truncated }: { columns: string[]; rows: Record<string, unknown>[]; truncated: boolean }) {
   const [page, setPage] = useState(0); const pageSize = 20; const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, pages - 1);
   if (!columns.length) return <div className="empty-state compact">查询完成后将在这里展示受限结果集。</div>;
   return <div><div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((row, index) => <tr key={index}>{columns.map((column) => <td key={column}>{displayCell(row[column])}</td>)}</tr>)}</tbody></table></div>
-    <div className="pagination"><span>共 {rows.length} 行 · 每页 {pageSize} 行{rows.length >= 100 && " · 结果可能已按安全上限截断"}</span><div><button disabled={currentPage === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>上一页</button><b>{currentPage + 1}/{pages}</b><button disabled={currentPage + 1 >= pages} onClick={() => setPage((value) => Math.min(pages - 1, value + 1))}>下一页</button></div></div></div>;
+    <div className="pagination"><span>共 {rows.length} 行 · 每页 {pageSize} 行{truncated && " · 结果已按安全上限截断，仅展示部分数据"}</span><div><button disabled={currentPage === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>上一页</button><b>{currentPage + 1}/{pages}</b><button disabled={currentPage + 1 >= pages} onClick={() => setPage((value) => Math.min(pages - 1, value + 1))}>下一页</button></div></div></div>;
 }
 
 function SqlPanel({ sql }: { sql?: string | null }) {
@@ -251,7 +254,7 @@ function SourcesView({ session, sources, isAdmin, onChanged }: { session: Sessio
     try { await api.createDataSource(session.accessToken, { name: data.get("name"), host: data.get("host"), port: Number(data.get("port")), database_name: data.get("database"), allowed_schema: data.get("schema"), secret_ref: data.get("secret") }); setOpen(false); await onChanged(); }
     catch (reason) { setError(actionableError(reason)); } finally { setPending(false); }
   }
-  return <section className="view"><div className="view-heading"><div><p className="eyebrow">DATA SOURCES</p><h1>数据源管理</h1><p>平台仅保存凭据引用，分析服务始终使用只读数据库账号。</p></div>{isAdmin && <button className="primary" onClick={() => setOpen(true)}>+ 登记数据源</button>}</div>
+  return <section className="view"><div className="view-heading"><div><p className="eyebrow">DATA SOURCES</p><h1>数据源管理</h1><p>当前部署仅支持配置的 Northwind 演示源，分析服务使用固定只读账号。</p></div>{isAdmin && !sources.length && <button className="primary" onClick={() => setOpen(true)}>+ 登记演示源</button>}</div>
     <div className="card-grid">{sources.map((source) => <article className="resource-card" key={source.id}><div><span className="database-icon">DB</span><span className={`status-pill ${source.enabled ? "completed" : "cancelled"}`}>{source.enabled ? "可用" : "停用"}</span></div><h2>{source.name}</h2><p>PostgreSQL · schema <code>{source.allowed_schema}</code></p><footer><span>凭据已托管</span><small>v{source.version}</small></footer></article>)}{!sources.length && <div className="empty-state panel">当前租户还没有登记数据源。</div>}</div>
     {open && <Modal title="登记 PostgreSQL 数据源" onClose={() => setOpen(false)}><form className="form-grid" onSubmit={submit}><label>名称<input name="name" required maxLength={160} /></label><label>主机<input name="host" required /></label><label>端口<input name="port" type="number" defaultValue="5432" min="1" max="65535" required /></label><label>数据库<input name="database" required /></label><label>允许的 schema<input name="schema" defaultValue="northwind" pattern="[a-z_][a-z0-9_]*" required /></label><label>凭据引用<input name="secret" placeholder="env:BUSINESS_DB_READONLY" pattern="(env|vault|secret):[A-Za-z0-9_./-]+" required /></label>{error && <div className="callout error full">{error}</div>}<div className="modal-actions full"><button type="button" onClick={() => setOpen(false)}>取消</button><button className="primary" disabled={pending}>{pending ? "正在登记…" : "登记数据源"}</button></div></form></Modal>}
   </section>;

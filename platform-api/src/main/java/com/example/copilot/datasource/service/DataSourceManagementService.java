@@ -2,6 +2,7 @@ package com.example.copilot.datasource.service;
 
 import com.example.copilot.audit.service.AuditService;
 import com.example.copilot.common.api.DataSourceHostNotAllowedException;
+import com.example.copilot.common.api.DemoDataSourceOnlyException;
 import com.example.copilot.datasource.api.CreateDataSourceRequest;
 import com.example.copilot.datasource.api.DataSourceResource;
 import com.example.copilot.datasource.domain.DataSource;
@@ -33,6 +34,13 @@ public class DataSourceManagementService {
         if (!registrationProperties.allows(request.host())) {
             throw new DataSourceHostNotAllowedException();
         }
+        if (!registrationProperties.matches(request)) {
+            throw new DemoDataSourceOnlyException();
+        }
+        if (dataSourceRepository.findAllByTenantIdOrderByName(caller.tenantId()).stream()
+                .anyMatch(registrationProperties::matches)) {
+            throw new DemoDataSourceOnlyException();
+        }
         var dataSource = dataSourceRepository.save(new DataSource(
                 UUID.randomUUID(),
                 caller.tenantId(),
@@ -50,6 +58,7 @@ public class DataSourceManagementService {
     @Transactional(readOnly = true)
     public List<DataSourceResource> list(Caller caller) {
         return dataSourceRepository.findAllByTenantIdOrderByName(caller.tenantId()).stream()
+                .filter(registrationProperties::matches)
                 .map(DataSourceResource::from)
                 .toList();
     }

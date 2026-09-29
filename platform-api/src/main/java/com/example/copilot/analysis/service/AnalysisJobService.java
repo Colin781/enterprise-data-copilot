@@ -8,6 +8,7 @@ import com.example.copilot.audit.service.AuditService;
 import com.example.copilot.common.api.IdempotencyConflictException;
 import com.example.copilot.common.api.ResourceNotFoundException;
 import com.example.copilot.datasource.repository.DataSourceRepository;
+import com.example.copilot.datasource.service.DataSourceRegistrationProperties;
 import com.example.copilot.execution.AnalysisJobAccepted;
 import com.example.copilot.identity.repository.AppUserRepository;
 import com.example.copilot.security.CallerIdentity.Caller;
@@ -27,6 +28,7 @@ public class AnalysisJobService {
 
     private final AnalysisJobRepository jobRepository;
     private final DataSourceRepository dataSourceRepository;
+    private final DataSourceRegistrationProperties registrationProperties;
     private final AppUserRepository userRepository;
     private final AuditService auditService;
     private final ApplicationEventPublisher eventPublisher;
@@ -35,12 +37,14 @@ public class AnalysisJobService {
     public AnalysisJobService(
             AnalysisJobRepository jobRepository,
             DataSourceRepository dataSourceRepository,
+            DataSourceRegistrationProperties registrationProperties,
             AppUserRepository userRepository,
             AuditService auditService,
             ApplicationEventPublisher eventPublisher,
             ObjectMapper objectMapper) {
         this.jobRepository = jobRepository;
         this.dataSourceRepository = dataSourceRepository;
+        this.registrationProperties = registrationProperties;
         this.userRepository = userRepository;
         this.auditService = auditService;
         this.eventPublisher = eventPublisher;
@@ -67,6 +71,7 @@ public class AnalysisJobService {
 
         dataSourceRepository
                 .findByIdAndTenantIdAndEnabledTrue(request.dataSourceId(), caller.tenantId())
+                .filter(registrationProperties::matches)
                 .orElseThrow(() -> new ResourceNotFoundException("The data source was not found."));
 
         var job = jobRepository.save(new AnalysisJob(

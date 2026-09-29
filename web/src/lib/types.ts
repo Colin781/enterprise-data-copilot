@@ -68,6 +68,7 @@ export interface AnalysisJob {
   error_code?: string | null;
   columns: string[];
   rows: Record<string, unknown>[];
+  result_truncated: boolean;
   chart: Record<string, unknown>;
   citations: Citation[];
 }

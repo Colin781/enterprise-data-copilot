@@ -155,6 +155,8 @@ make stack-up
 
 `make stack-up` 会构建三个应用镜像，启动 Web、Platform API、Agent、两套 PostgreSQL、Redis 和 Prometheus，等待配置了健康检查的服务就绪，并幂等加载固定 Northwind 数据。第一次拉镜像和安装镜像内依赖需要网络；不需要先运行 `make setup`，也不要再同时启动 `make dev`。
 
+从旧版本升级到包含结果截断标志的版本时，直接重新构建并启动即可。Platform 启动时会自动执行 Flyway V6，给已有任务表增加 `result_truncated` 字段；不需要删除 PostgreSQL 数据卷，也不要为了迁移运行 `docker compose down -v`。
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.full.yml ps
 curl -fsS http://localhost:3000/health
@@ -264,6 +266,8 @@ Started PlatformApiApplication
 - 分析员：`analyst@northwind.local`
 - 初始密码：`change-me-demo`
 - 数据源：`Northwind read-only`
+
+目前这是唯一可查询的数据源：Platform 会按完整连接元数据校验登记记录，Agent 使用对应的固定 Northwind 只读连接。开发热重载使用 `.env` 中的 `BUSINESS_DB_HOST`、`BUSINESS_DB_PORT`（默认 `localhost:5433`）；完整 Compose 自动将两端都设为 `business-db:5432`。如更改本机业务库地址，修改 `.env` 中的这两个字段并重启 Platform 与 Agent。旧的非匹配登记记录不会作为可选项，也不能创建新任务；本地默认 `PLATFORM_BOOTSTRAP_ENABLED=true` 时，Platform 会幂等补建匹配的演示源。关闭 bootstrap 的环境不会自动补建，需由管理员按部署配置登记一次匹配的演示源。
 
 ### 终端二：Agent Service
 
@@ -416,6 +420,7 @@ retail-metrics-v1
 - `classify`、`retrieve_metrics`、`select_schema`、`generate_sql`、`guard_sql`、`execute_sql`、`verify`、`compose` 全部成功。
 - 只读 SQL。
 - 两行数据。
+- 基于这两行数据的描述性结论；若结果因行数或字节上限截断，页面会明确提示，而非按“是否恰好达到 100 行”猜测。
 - `quarter_start` 为横轴、`total_sales` 为序列的折线图。
 
 问题“1997 年每季度销售额是多少？”现在也会完成，但由于固定数据没有 1997 年记录，会返回 0 行。这是数据事实，不是服务失败。

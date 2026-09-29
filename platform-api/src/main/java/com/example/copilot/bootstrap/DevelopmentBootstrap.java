@@ -2,6 +2,7 @@ package com.example.copilot.bootstrap;
 
 import com.example.copilot.datasource.domain.DataSource;
 import com.example.copilot.datasource.repository.DataSourceRepository;
+import com.example.copilot.datasource.service.DataSourceRegistrationProperties;
 import com.example.copilot.identity.domain.AppUser;
 import com.example.copilot.identity.domain.Tenant;
 import com.example.copilot.identity.domain.UserRole;
@@ -26,6 +27,7 @@ public class DevelopmentBootstrap implements ApplicationRunner {
     private final TenantRepository tenants;
     private final AppUserRepository users;
     private final DataSourceRepository dataSources;
+    private final DataSourceRegistrationProperties registrationProperties;
     private final PasswordEncoder passwordEncoder;
 
     public DevelopmentBootstrap(
@@ -33,11 +35,13 @@ public class DevelopmentBootstrap implements ApplicationRunner {
             TenantRepository tenants,
             AppUserRepository users,
             DataSourceRepository dataSources,
+            DataSourceRegistrationProperties registrationProperties,
             PasswordEncoder passwordEncoder) {
         this.properties = properties;
         this.tenants = tenants;
         this.users = users;
         this.dataSources = dataSources;
+        this.registrationProperties = registrationProperties;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -52,16 +56,17 @@ public class DevelopmentBootstrap implements ApplicationRunner {
                         tenants.save(new Tenant(UUID.randomUUID(), properties.tenantSlug(), properties.tenantName())));
         ensureUser(tenant, properties.adminEmail(), "Demo Admin", Set.of(UserRole.ADMIN));
         ensureUser(tenant, properties.analystEmail(), "Demo Analyst", Set.of(UserRole.ANALYST));
-        if (dataSources.findAllByTenantIdOrderByName(tenant.getId()).isEmpty()) {
+        if (dataSources.findAllByTenantIdOrderByName(tenant.getId()).stream()
+                .noneMatch(registrationProperties::matches)) {
             dataSources.save(new DataSource(
                     UUID.randomUUID(),
                     tenant.getId(),
                     "Northwind read-only",
-                    "localhost",
-                    5433,
-                    "northwind",
-                    "northwind",
-                    "env:BUSINESS_DB_READONLY_PASSWORD"));
+                    registrationProperties.demoHost(),
+                    registrationProperties.demoPort(),
+                    registrationProperties.demoDatabaseName(),
+                    registrationProperties.demoAllowedSchema(),
+                    registrationProperties.demoSecretRef()));
         }
         LOGGER.warn(
                 "Local demo bootstrap is enabled for tenant '{}'; disable PLATFORM_BOOTSTRAP_ENABLED outside development",

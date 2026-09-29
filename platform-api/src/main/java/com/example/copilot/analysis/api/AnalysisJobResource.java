@@ -25,6 +25,7 @@ public record AnalysisJobResource(
         String errorCode,
         List<String> columns,
         List<Map<String, Object>> rows,
+        boolean resultTruncated,
         Map<String, Object> chart,
         List<Map<String, Object>> citations) {
 
@@ -45,6 +46,7 @@ public record AnalysisJobResource(
                 job.getErrorCode(),
                 parse(job.getResultColumnsJson(), new TypeReference<>() {}, List.of(), objectMapper),
                 parse(job.getResultRowsJson(), new TypeReference<>() {}, List.of(), objectMapper),
+                job.isResultTruncated(),
                 parse(
                         job.getChartSpecJson(),
                         new TypeReference<>() {},

@@ -181,7 +181,8 @@ make verify-all
 
 ## 已知限制
 
-- 主数据集和 SQL 方言固定为 Northwind/PostgreSQL，尚未验证真实客户 schema 漂移。
+- 当前部署仅接受与配置完全一致的 Northwind 演示源（主机、端口、数据库、schema、凭据引用）；旧的非匹配登记记录不可选也不能创建任务。尚未实现按租户和数据源 ID 动态解析客户数据库连接。
+- SQL 文字结论仅描述返回结果中的数值、极值和有序期间的首末期变化；截断结果会标注范围，不推断经营变化的因果原因。
 - P10 的 100% 是离线 Gold Replay 管线结果；真实 OpenRouter 模型批量准确率、Token 与费用尚需显式评测。
 - 本地 hashing embedding 是可复现基线，不等价于生产语义 embedding。
 - Compose 是单机部署构件，不提供多区域高可用、自动扩缩、云 Secret Manager 或 SLA。

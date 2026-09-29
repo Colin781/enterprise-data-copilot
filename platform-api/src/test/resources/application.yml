@@ -36,6 +36,11 @@ platform:
     request-timeout: PT0.1S
   data-source-registration:
     allowed-hosts: business-db,localhost,127.0.0.1
+    demo-host: business-db
+    demo-port: 5432
+    demo-database-name: northwind
+    demo-allowed-schema: northwind
+    demo-secret-ref: env:BUSINESS_DB_READONLY_PASSWORD
   execution:
     enabled: false
     core-pool-size: 1

@@ -2,6 +2,8 @@ package com.example.copilot.platform;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -151,6 +153,7 @@ class AsyncSseIntegrationTest extends PostgresRedisIntegrationTest {
                                       "error_code":null,
                                       "columns":["label","value"],
                                       "rows":[{"label":"result","value":1}],
+                                      "result_truncated":true,
                                       "chart_spec":{"type":"bar","title":"Result","x":"label","series":["value"]},
                                       "citations":[{"document_title":"Revenue","section_title":"Definition"}]
                                     }
@@ -185,12 +188,14 @@ class AsyncSseIntegrationTest extends PostgresRedisIntegrationTest {
         assertThat(persisted.getGeneratedSql()).isEqualTo("SELECT 1 AS value");
         assertThat(persisted.getAnswer()).isEqualTo("one row");
         assertThat(persisted.getResultRowsJson()).contains("result");
+        assertThat(persisted.isResultTruncated()).isTrue();
         assertThat(persisted.getFinishedAt()).isNotNull();
 
         mockMvc.perform(get("/api/analysis/jobs/{jobId}", jobId).header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.columns[1]").value("value"))
                 .andExpect(jsonPath("$.rows[0].value").value(1))
+                .andExpect(jsonPath("$.result_truncated").value(true))
                 .andExpect(jsonPath("$.chart.type").value("bar"))
                 .andExpect(jsonPath("$.citations[0].document_title").value("Revenue"));
         mockMvc.perform(get("/api/analysis/jobs").header("Authorization", "Bearer " + token))
@@ -268,6 +273,44 @@ class AsyncSseIntegrationTest extends PostgresRedisIntegrationTest {
         assertThat(eventStream.replay(job.getId(), null))
                 .extracting(event -> event.type())
                 .contains("JOB_RECOVERED", "JOB_STATUS_CHANGED");
+    }
+
+    @Test
+    @Timeout(10)
+    void startupRecoveryNeverDispatchesAnOldSourceThatDoesNotMatchTheDemoDatabase() throws Exception {
+        var tenant = tenantRepository.save(new Tenant(UUID.randomUUID(), "stale", "Stale"));
+        var analyst = userRepository.save(new AppUser(
+                UUID.randomUUID(),
+                tenant.getId(),
+                "analyst@stale.test",
+                passwordEncoder.encode(PASSWORD),
+                "Analyst",
+                Set.of(UserRole.ANALYST)));
+        var source = dataSourceRepository.save(new DataSource(
+                UUID.randomUUID(),
+                tenant.getId(),
+                "old source",
+                "business-db",
+                5432,
+                "other_database",
+                "public",
+                "env:BUSINESS_DB_READONLY_PASSWORD"));
+        var job = jobRepository.save(new AnalysisJob(
+                UUID.randomUUID(),
+                tenant.getId(),
+                source.getId(),
+                analyst.getId(),
+                "must not dispatch",
+                "stale-source-request-0001",
+                "0".repeat(64),
+                "1".repeat(32)));
+
+        dispatcher.recoverUnfinishedJobs();
+
+        awaitStatus(job.getId(), AnalysisJobStatus.FAILED);
+        assertThat(jobRepository.findById(job.getId()).orElseThrow().getErrorCode())
+                .isEqualTo("DATA_SOURCE_NOT_AVAILABLE");
+        verify(agentRunClient, never()).start(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     private String login() throws Exception {

@@ -22,6 +22,8 @@ make stack-up
 
 它会启动 Web、Platform、Agent、两套 PostgreSQL、Redis 和 Prometheus，并加载固定 Northwind 数据。Web 为 `http://localhost:3000`，Prometheus 为 `http://localhost:9090`。查看状态使用 `docker compose -f docker-compose.yml -f docker-compose.full.yml ps`；停止使用 `make stack-down`，数据库卷保留。真实模型分析才需要有效 `LLM_API_KEY`；本地健康检查和危险问题拒绝不调用模型。
 
+当前只支持一个配置好的 Northwind 演示源。完整 Compose 会将 Platform 的演示源校验地址固定为 `business-db:5432`，开发热重载默认校验 `localhost:5433`。不要把界面的“登记数据源”理解为已支持任意 PostgreSQL；已有非匹配记录会从可选列表过滤，并在创建任务时被拒绝。
+
 需要本机热重载时，先确保完整栈已停止，再执行：
 
 ```bash

@@ -91,6 +91,7 @@ export function actionableError(error: unknown): string {
     DOCUMENT_INVALID: "请上传内容完整的 UTF-8 Markdown 或未加密 PDF。",
     DOCUMENT_LIMIT_EXCEEDED: "文档超过限制，请拆分后再上传。",
     IDEMPOTENCY_CONFLICT: "相同请求标识已用于其他内容，请重新提交。",
+    DEMO_DATA_SOURCE_ONLY: "当前部署只支持配置的 Northwind 演示源，请检查主机、端口、数据库、schema 和凭据引用。",
   };
   return suggestions[error.code] ?? `${error.message}${error.traceId ? `（追踪号 ${error.traceId}）` : ""}`;
 }

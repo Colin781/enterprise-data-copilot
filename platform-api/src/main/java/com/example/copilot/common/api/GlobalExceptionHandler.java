@@ -93,6 +93,11 @@ public class GlobalExceptionHandler {
                 HttpStatus.UNPROCESSABLE_CONTENT, "DATA_SOURCE_HOST_NOT_ALLOWED", exception.getMessage(), request);
     }
 
+    @ExceptionHandler(DemoDataSourceOnlyException.class)
+    ResponseEntity<ApiError> demoDataSourceOnly(DemoDataSourceOnlyException exception, HttpServletRequest request) {
+        return response(HttpStatus.UNPROCESSABLE_CONTENT, "DEMO_DATA_SOURCE_ONLY", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> unexpected(Exception exception, HttpServletRequest request) {
         return response(

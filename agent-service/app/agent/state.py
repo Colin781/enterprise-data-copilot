@@ -28,6 +28,7 @@ class AgentState(TypedDict, total=False):
     approval_decision: ApprovalDecision
     rows: list[dict[str, Any]]
     columns: list[str]
+    result_truncated: bool
     attempts: int
     answer: str
     citations: list[dict[str, Any]]

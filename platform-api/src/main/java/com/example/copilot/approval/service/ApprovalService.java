@@ -101,6 +101,7 @@ public class ApprovalService {
                     nodeText(result.state(), "error_code"),
                     nodeJson(result.state(), "columns"),
                     nodeJson(result.state(), "rows"),
+                    nodeBoolean(result.state(), "result_truncated"),
                     nodeJson(result.state(), "chart_spec"),
                     nodeJson(result.state(), "citations"));
         }
@@ -146,5 +147,13 @@ public class ApprovalService {
     private static String nodeJson(tools.jackson.databind.JsonNode state, String field) {
         var value = state.get(field);
         return value == null || value.isNull() ? null : value.toString();
+    }
+
+    private static boolean nodeBoolean(tools.jackson.databind.JsonNode state, String field) {
+        if (state == null) {
+            return false;
+        }
+        var value = state.get(field);
+        return value != null && value.asBoolean();
     }
 }

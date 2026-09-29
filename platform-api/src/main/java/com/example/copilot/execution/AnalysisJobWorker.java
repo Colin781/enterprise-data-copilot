@@ -3,6 +3,8 @@ package com.example.copilot.execution;
 import com.example.copilot.analysis.domain.AnalysisJob;
 import com.example.copilot.analysis.domain.AnalysisJobStatus;
 import com.example.copilot.analysis.repository.AnalysisJobRepository;
+import com.example.copilot.datasource.repository.DataSourceRepository;
+import com.example.copilot.datasource.service.DataSourceRegistrationProperties;
 import com.example.copilot.events.AnalysisEventStreamService;
 import com.example.copilot.events.JobProgressSignal;
 import com.example.copilot.identity.domain.UserRole;
@@ -24,6 +26,8 @@ public class AnalysisJobWorker {
     private static final Logger LOGGER = LoggerFactory.getLogger(AnalysisJobWorker.class);
 
     private final AnalysisJobRepository jobRepository;
+    private final DataSourceRepository dataSourceRepository;
+    private final DataSourceRegistrationProperties registrationProperties;
     private final AppUserRepository userRepository;
     private final AgentRunClient agentRunClient;
     private final AnalysisEventStreamService eventStream;
@@ -33,6 +37,8 @@ public class AnalysisJobWorker {
 
     public AnalysisJobWorker(
             AnalysisJobRepository jobRepository,
+            DataSourceRepository dataSourceRepository,
+            DataSourceRegistrationProperties registrationProperties,
             AppUserRepository userRepository,
             AgentRunClient agentRunClient,
             AnalysisEventStreamService eventStream,
@@ -40,6 +46,8 @@ public class AnalysisJobWorker {
             AnalysisExecutionProperties properties,
             TransactionTemplate transactions) {
         this.jobRepository = jobRepository;
+        this.dataSourceRepository = dataSourceRepository;
+        this.registrationProperties = registrationProperties;
         this.userRepository = userRepository;
         this.agentRunClient = agentRunClient;
         this.eventStream = eventStream;
@@ -68,6 +76,9 @@ public class AnalysisJobWorker {
                         completed.status(),
                         Map.of("terminal", isTerminal(completed.status())));
             }
+        } catch (DataSourceMismatchException exception) {
+            LOGGER.warn("Job {} refers to a data source outside the configured Northwind demo scope", jobId);
+            fail(jobId, "DATA_SOURCE_NOT_AVAILABLE");
         } catch (RuntimeException exception) {
             LOGGER.error("Background agent execution failed for job {}", jobId, exception);
             fail(jobId, "AGENT_DISPATCH_FAILED");
@@ -84,6 +95,12 @@ public class AnalysisJobWorker {
         var job = jobRepository.findById(jobId).orElse(null);
         if (job == null || isTerminal(job.getStatus()) || job.getStatus() == AnalysisJobStatus.WAITING_APPROVAL) {
             return null;
+        }
+        if (dataSourceRepository
+                .findByIdAndTenantIdAndEnabledTrue(job.getDataSourceId(), job.getTenantId())
+                .filter(registrationProperties::matches)
+                .isEmpty()) {
+            throw new DataSourceMismatchException();
         }
         if (job.getStatus() == AnalysisJobStatus.CREATED) {
             job.transitionTo(AnalysisJobStatus.PLANNING);
@@ -133,6 +150,7 @@ public class AnalysisJobWorker {
                 stateText(result.state(), "error_code"),
                 stateJson(result.state(), "columns"),
                 stateJson(result.state(), "rows"),
+                stateBoolean(result.state(), "result_truncated"),
                 stateJson(result.state(), "chart_spec"),
                 stateJson(result.state(), "citations"));
         return data(job, null);
@@ -194,6 +212,14 @@ public class AnalysisJobWorker {
         return value == null || value.isNull() ? null : value.toString();
     }
 
+    private static boolean stateBoolean(JsonNode state, String field) {
+        if (state == null) {
+            return false;
+        }
+        var value = state.get(field);
+        return value != null && value.asBoolean();
+    }
+
     private static boolean isTerminal(AnalysisJobStatus status) {
         return status == AnalysisJobStatus.COMPLETED
                 || status == AnalysisJobStatus.REJECTED
@@ -233,4 +259,6 @@ public class AnalysisJobWorker {
             String traceId,
             String idempotencyKey,
             AnalysisJobStatus status) {}
+
+    private static class DataSourceMismatchException extends RuntimeException {}
 }

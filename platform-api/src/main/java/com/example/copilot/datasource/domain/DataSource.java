@@ -104,6 +104,22 @@ public class DataSource {
         return sourceType;
     }
 
+    public String getHost() {
+        return host;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public String getDatabaseName() {
+        return databaseName;
+    }
+
+    public String getSecretRef() {
+        return secretRef;
+    }
+
     public String getAllowedSchema() {
         return allowedSchema;
     }

@@ -7,7 +7,12 @@ from app.agent.state import AgentState
 from app.data_sources.models import DataSourceConfig
 from app.metadata.models import SchemaSnapshot
 from app.query_safety.guard import SQLGuard
-from app.query_safety.models import GuardedQuery, QueryCostEstimate, QueryPolicy
+from app.query_safety.models import (
+    GuardedQuery,
+    QueryCostEstimate,
+    QueryExecutionResult,
+    QueryPolicy,
+)
 
 
 class FixedEstimator:
@@ -24,12 +29,26 @@ class UnusedExecutor:
         raise AssertionError("the policy tests must not execute SQL")
 
 
+class FixedResultExecutor:
+    def execute(self, *args: object) -> QueryExecutionResult:
+        return QueryExecutionResult(
+            columns=("quarter", "sales"),
+            rows=({"quarter": "Q1", "sales": "100.00"},),
+            returned_row_count=1,
+            serialized_bytes=64,
+            truncated=True,
+        )
+
+
 def snapshot() -> SchemaSnapshot:
     path = Path(__file__).parents[2] / "metadata/northwind-schema-v1.json"
     return SchemaSnapshot.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def actions(estimator: FixedEstimator | None = None) -> NorthwindAgentActions:
+def actions(
+    estimator: FixedEstimator | None = None,
+    executor: UnusedExecutor | FixedResultExecutor | None = None,
+) -> NorthwindAgentActions:
     return NorthwindAgentActions(
         llm_client=object(),  # type: ignore[arg-type]
         retrieval=object(),  # type: ignore[arg-type]
@@ -45,7 +64,7 @@ def actions(estimator: FixedEstimator | None = None) -> NorthwindAgentActions:
         introspector=object(),  # type: ignore[arg-type]
         guard=SQLGuard(),
         cost_estimator=estimator or FixedEstimator(),
-        executor=UnusedExecutor(),  # type: ignore[arg-type]
+        executor=executor or UnusedExecutor(),  # type: ignore[arg-type]
     )
 
 
@@ -90,3 +109,19 @@ def test_production_classifier_permanently_blocks_write_request() -> None:
 
     assert decision["sql_risk"] == "blocked"
     assert decision["risk_reasons"] == ["WRITE_REQUEST_NOT_ALLOWED"]
+
+
+def test_sql_result_keeps_truncation_through_composition() -> None:
+    policy = QueryPolicy.from_snapshot(snapshot()).restrict_to_tables(frozenset({"orders"}))
+    guarded = SQLGuard().inspect("SELECT order_id FROM northwind.orders LIMIT 5", policy)
+    adapter = actions(executor=FixedResultExecutor())
+    executed = adapter.execute_sql(
+        AgentState(
+            guarded_query=guarded.model_dump(mode="json"),
+            query_policy=policy.model_dump(mode="json"),
+        )
+    )
+    composed = adapter.compose(AgentState(intent="hybrid", **executed))
+
+    assert executed["result_truncated"] is True
+    assert "结果已截断" in composed["answer"]
