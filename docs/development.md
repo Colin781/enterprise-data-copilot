@@ -1,5 +1,7 @@
 # 本地开发
 
+Java 当前使用统一的按层目录；入口、调用链与源码导航见 [Java 平台代码阅读指南](../platform-api/README.md)。从旧业务模块目录切换后，宿主机开发请先停止旧 Java 进程，在 `platform-api` 执行一次 `./mvnw clean`，再从仓库根目录执行 `make dev-platform`，清除旧包编译产物。完整 Compose 模式使用 `make stack-up` 重建镜像即可。
+
 ## 前置工具
 
 若只运行完整 Compose 栈，本机只需 Docker 与 Compose；下面这些宿主机工具用于热重载开发和本机验收。

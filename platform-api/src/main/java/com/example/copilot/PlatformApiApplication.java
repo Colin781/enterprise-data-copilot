@@ -1,9 +1,9 @@
 package com.example.copilot;
 
-import com.example.copilot.bootstrap.DevelopmentBootstrapProperties;
-import com.example.copilot.datasource.service.DataSourceRegistrationProperties;
-import com.example.copilot.execution.AnalysisExecutionProperties;
-import com.example.copilot.integration.agent.AgentIntegrationProperties;
+import com.example.copilot.config.properties.AgentIntegrationProperties;
+import com.example.copilot.config.properties.AnalysisExecutionProperties;
+import com.example.copilot.config.properties.DataSourceRegistrationProperties;
+import com.example.copilot.config.properties.DevelopmentBootstrapProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;

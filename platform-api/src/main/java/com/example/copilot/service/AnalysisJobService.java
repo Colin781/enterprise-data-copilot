@@ -1,0 +1,119 @@
+package com.example.copilot.service;
+
+import com.example.copilot.config.properties.DataSourceRegistrationProperties;
+import com.example.copilot.dto.request.CreateAnalysisJobRequest;
+import com.example.copilot.dto.response.AnalysisJobResource;
+import com.example.copilot.entity.AnalysisJob;
+import com.example.copilot.event.AnalysisJobAccepted;
+import com.example.copilot.exception.IdempotencyConflictException;
+import com.example.copilot.exception.ResourceNotFoundException;
+import com.example.copilot.repository.AnalysisJobRepository;
+import com.example.copilot.repository.AppUserRepository;
+import com.example.copilot.repository.DataSourceRepository;
+import com.example.copilot.security.CallerIdentity.Caller;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
+
+@Service
+public class AnalysisJobService {
+
+    private final AnalysisJobRepository jobRepository;
+    private final DataSourceRepository dataSourceRepository;
+    private final DataSourceRegistrationProperties registrationProperties;
+    private final AppUserRepository userRepository;
+    private final AuditService auditService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
+
+    public AnalysisJobService(
+            AnalysisJobRepository jobRepository,
+            DataSourceRepository dataSourceRepository,
+            DataSourceRegistrationProperties registrationProperties,
+            AppUserRepository userRepository,
+            AuditService auditService,
+            ApplicationEventPublisher eventPublisher,
+            ObjectMapper objectMapper) {
+        this.jobRepository = jobRepository;
+        this.dataSourceRepository = dataSourceRepository;
+        this.registrationProperties = registrationProperties;
+        this.userRepository = userRepository;
+        this.auditService = auditService;
+        this.eventPublisher = eventPublisher;
+        this.objectMapper = objectMapper;
+    }
+
+    @Transactional
+    public AnalysisJobResource create(
+            CreateAnalysisJobRequest request, String idempotencyKey, Caller caller, String traceId) {
+        userRepository
+                .findByIdAndTenantId(caller.userId(), caller.tenantId())
+                .orElseThrow(() -> new ResourceNotFoundException("The authenticated user no longer exists."));
+
+        var question = request.question().trim();
+        var requestHash = requestHash(request.dataSourceId(), question);
+        var existing = jobRepository.findByTenantIdAndCreatedByAndIdempotencyKey(
+                caller.tenantId(), caller.userId(), idempotencyKey);
+        if (existing.isPresent()) {
+            if (!existing.get().getRequestHash().equals(requestHash)) {
+                throw new IdempotencyConflictException();
+            }
+            return AnalysisJobResource.from(existing.get(), objectMapper);
+        }
+
+        dataSourceRepository
+                .findByIdAndTenantIdAndEnabledTrue(request.dataSourceId(), caller.tenantId())
+                .filter(registrationProperties::matches)
+                .orElseThrow(() -> new ResourceNotFoundException("The data source was not found."));
+
+        var job = jobRepository.save(new AnalysisJob(
+                UUID.randomUUID(),
+                caller.tenantId(),
+                request.dataSourceId(),
+                caller.userId(),
+                question,
+                idempotencyKey,
+                requestHash,
+                traceId));
+        auditService.recordSuccess(
+                caller.tenantId(), caller.userId(), "ANALYSIS_JOB_CREATED", "ANALYSIS_JOB", job.getId(), traceId);
+        eventPublisher.publishEvent(new AnalysisJobAccepted(job.getId()));
+        return AnalysisJobResource.from(job, objectMapper);
+    }
+
+    @Transactional(readOnly = true)
+    public AnalysisJobResource get(UUID jobId, Caller caller) {
+        var job = caller.roles().contains("ADMIN")
+                ? jobRepository.findByIdAndTenantId(jobId, caller.tenantId())
+                : jobRepository.findByIdAndTenantIdAndCreatedBy(jobId, caller.tenantId(), caller.userId());
+        return job.map(value -> AnalysisJobResource.from(value, objectMapper))
+                .orElseThrow(() -> new ResourceNotFoundException("The analysis job was not found."));
+    }
+
+    @Transactional(readOnly = true)
+    public List<AnalysisJobResource> list(Caller caller) {
+        var jobs = caller.roles().contains("ADMIN")
+                ? jobRepository.findTop50ByTenantIdOrderByCreatedAtDesc(caller.tenantId())
+                : jobRepository.findTop50ByTenantIdAndCreatedByOrderByCreatedAtDesc(caller.tenantId(), caller.userId());
+        return jobs.stream()
+                .map(value -> AnalysisJobResource.from(value, objectMapper))
+                .toList();
+    }
+
+    private static String requestHash(UUID dataSourceId, String question) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            var bytes = digest.digest((dataSourceId + "\n" + question).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(bytes);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+}

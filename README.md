@@ -71,6 +71,7 @@ sequenceDiagram
 - [第一阶段小结：P0～P2](docs/milestone-1-foundation-summary.md)
 - [产品需求](docs/product-requirements.md)
 - [总体架构](docs/architecture.md)
+- [Java 平台目录与代码阅读指南](platform-api/README.md)
 - [Java/Python 服务边界 ADR](docs/adr/0001-java-python-boundary.md)
 - [手工验收问题与拒绝场景](docs/manual-acceptance.md)
 - [实施计划审视](docs/implementation-roadmap.md)

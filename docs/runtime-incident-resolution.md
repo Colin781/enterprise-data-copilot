@@ -152,7 +152,7 @@ Java Platform 同时存在两类 Bearer token：
 
 对应位置：
 
-- `platform-api/src/main/java/com/example/copilot/security/SecurityConfiguration.java`
+- `platform-api/src/main/java/com/example/copilot/config/SecurityConfiguration.java`
 
 同时增加集成测试，验证：
 
@@ -189,8 +189,8 @@ Invalid HTTP request received.
 
 对应位置：
 
-- `platform-api/src/main/java/com/example/copilot/integration/agent/HttpMetricKnowledgeClient.java`
-- `platform-api/src/main/java/com/example/copilot/integration/agent/HttpAgentRunClient.java`
+- `platform-api/src/main/java/com/example/copilot/client/agent/HttpMetricKnowledgeClient.java`
+- `platform-api/src/main/java/com/example/copilot/client/agent/HttpAgentRunClient.java`
 
 ### 10. 问题一的最终结果
 

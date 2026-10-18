@@ -247,6 +247,8 @@ make load-northwind
 
 ### 终端一：Platform API
 
+若刚从旧的按业务模块分包版本切换到统一分层版本，先停止旧 Java 进程，在 `platform-api` 目录执行一次 `./mvnw clean`，清除旧包的 `.class` 文件，再按下面的命令启动。完整 Compose 模式重新运行 `make stack-up` 即可。Java 代码导航见 [Java 平台代码阅读指南](../platform-api/README.md)。
+
 ```bash
 cd /Users/colin/Documents/ChatGPT/PyGPT/enterprise-data-copilot
 make dev-platform

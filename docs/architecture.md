@@ -44,6 +44,12 @@ flowchart LR
 
 详细取舍见 [ADR-0001](adr/0001-java-python-boundary.md)。
 
+## Java 平台内部组织
+
+Java 是单个 Spring Boot 工程，源码统一按层分包：`controller → service → repository → entity`；接口参数与响应放在 `dto/request`、`dto/response`，后台执行放在 `task`，Python 调用放在 `client/agent`，事件放在 `event`，配置放在 `config`。根启动包保持 `com.example.copilot`，接口和数据库契约沿用原定义。
+
+完整目录、各层职责和“提交分析任务”的逐文件阅读顺序见 [Java 平台代码阅读指南](../platform-api/README.md)。
+
 ## 数据边界
 
 - **平台 PostgreSQL**：用户、租户、数据源元数据、指标文档、任务、步骤、审批和审计。

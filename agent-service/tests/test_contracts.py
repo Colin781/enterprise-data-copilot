@@ -17,8 +17,7 @@ JAVA_STATUS_PATH = (
     / "com"
     / "example"
     / "copilot"
-    / "analysis"
-    / "domain"
+    / "enums"
     / "AnalysisJobStatus.java"
 )
 EXPECTED_JOB_STATUSES = {
