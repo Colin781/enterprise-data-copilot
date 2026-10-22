@@ -20,3 +20,8 @@ class DocumentLimitError(RetrievalError):
 class RetrievalStoreError(RetrievalError):
     code = "RETRIEVAL_STORE_UNAVAILABLE"
     public_message = "The metric knowledge store is unavailable."
+
+
+class EmbeddingProfileError(RetrievalError):
+    code = "RAG_REINDEX_REQUIRED"
+    public_message = "Embedding configuration changed. Re-ingest all active tenant documents."

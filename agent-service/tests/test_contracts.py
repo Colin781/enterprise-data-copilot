@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 from openapi_spec_validator import validate
 
 CONTRACTS_DIR = Path(__file__).resolve().parents[2] / "contracts"
@@ -179,3 +179,80 @@ def test_p9_contract_supports_closed_chart_results_and_managed_knowledge() -> No
     assert "/api/metric-documents" in platform["paths"]
     assert "/api/approvals" in platform["paths"]
     assert "/internal/v1/knowledge/documents" in agent["paths"]
+
+
+@pytest.mark.parametrize("status", ["CREATED", "FAILED", "REJECTED", "COMPLETED"])
+@pytest.mark.parametrize("truncated", [False, True])
+def test_job_response_contract_accepts_nullable_pending_fields_and_truncation(
+    status: str, truncated: bool
+) -> None:
+    platform = load_yaml(CONTRACTS_DIR / "openapi-platform.yaml")
+    schema = {
+        "$ref": "#/components/schemas/AnalysisJobResource",
+        "components": platform["components"],
+    }
+    completed = status == "COMPLETED"
+    payload = {
+        "id": "16299398-4119-4e1a-a09a-4c026dcee8f0",
+        "data_source_id": "46c0de3b-e3fa-40c5-a1f4-5325722e5d36",
+        "question": "Quarterly sales",
+        "status": status,
+        "trace_id": "214ca4c8deb94ff69feabca263d1dcd5",
+        "created_at": "2026-10-13T02:19:16Z",
+        "updated_at": "2026-10-13T02:19:22Z",
+        "finished_at": None if status == "CREATED" else "2026-10-13T02:19:22Z",
+        "version": 2,
+        "workflow_thread_id": None
+        if status == "CREATED"
+        else "16299398-4119-4e1a-a09a-4c026dcee8f0",
+        "generated_sql": "SELECT order_id FROM northwind.orders LIMIT 1" if completed else None,
+        "answer": "One order" if completed else None,
+        "error_code": "NL2SQL_SCHEMA_SELECTION_FAILED" if status == "FAILED" else None,
+        "columns": [],
+        "rows": [],
+        "result_truncated": truncated,
+        "chart": {"title": "Query results", "type": "table", "series": []},
+        "citations": [],
+    }
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    validator.validate(payload)
+    for name, value in [("result_truncated", "false"), ("generated_sql", 1), ("answer", 1)]:
+        assert not validator.is_valid({**payload, name: value})
+    assert not validator.is_valid({**payload, "unexpected": True})
+
+
+@pytest.mark.parametrize(
+    "status,error_code",
+    [
+        ("SUCCEEDED", None),
+        ("WAITING", None),
+        ("FAILED", "NL2SQL_SCHEMA_SELECTION_FAILED"),
+    ],
+)
+def test_steps_endpoint_response_contract_accepts_nullable_error_code(
+    status: str, error_code: str | None
+) -> None:
+    platform = load_yaml(CONTRACTS_DIR / "openapi-platform.yaml")
+    response_schema = platform["paths"]["/api/analysis/jobs/{jobId}/steps"]["get"]["responses"][
+        "200"
+    ]["content"]["application/json"]["schema"]
+    validator = Draft202012Validator(
+        {**response_schema, "components": platform["components"]}, format_checker=FormatChecker()
+    )
+    step = {
+        "id": "adb85c6e-f9e3-4bfa-88d1-2fc9d28c67c7",
+        "step_name": "select_schema",
+        "status": status,
+        "attempt": 0,
+        "input_summary": {},
+        "output_summary": {},
+        "duration_ms": 10,
+        "error_code": error_code,
+        "created_at": "2026-10-13T03:03:11Z",
+    }
+    validator.validate([step])
+    validator.validate([])
+    assert not validator.is_valid([{**step, "error_code": 123}])
+    assert not validator.is_valid([{**step, "duration_ms": -1}])
+    assert not validator.is_valid([{**step, "unexpected": True}])
+    assert not validator.is_valid(step)

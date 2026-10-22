@@ -8,7 +8,7 @@ from app.nl2sql.errors import NL2SQLRepairExhaustedError, SchemaSelectionError
 from app.nl2sql.models import NL2SQLDraft, NL2SQLResult, TableSelection
 from app.nl2sql.prompts import generation_messages, repair_messages, selection_messages
 from app.nl2sql.question_guard import QuestionGuard
-from app.nl2sql.table_references import normalize_reported_tables
+from app.nl2sql.table_references import catalog_selection_model, normalize_reported_tables
 from app.query_safety.errors import QueryApprovalRequiredError, QuerySafetyError
 from app.query_safety.models import QueryContext, QueryPolicy
 from app.query_safety.service import SafeQueryService
@@ -46,7 +46,11 @@ class NL2SQLService:
         safe_question = self._question_guard.inspect(question)
         selection_result = await self._llm_client.generate(
             messages=_messages(selection_messages(safe_question, snapshot)),
-            response_model=TableSelection,
+            response_model=catalog_selection_model(
+                TableSelection,
+                allowed_tables=policy.allowed_tables & {table.name for table in snapshot.tables},
+                allowed_schema=policy.allowed_schema,
+            ),
         )
         selected_tables = self._validate_selection(selection_result.output, snapshot, policy)
         selected_policy = policy.restrict_to_tables(frozenset(selected_tables))
@@ -108,7 +112,7 @@ class NL2SQLService:
         snapshot: SchemaSnapshot,
         policy: QueryPolicy,
     ) -> tuple[str, ...]:
-        tables = tuple(dict.fromkeys(selection.tables))
+        tables = normalize_reported_tables(selection.tables, allowed_schema=policy.allowed_schema)
         known_tables = {table.name for table in snapshot.tables}
         if (
             len(tables) != len(selection.tables)

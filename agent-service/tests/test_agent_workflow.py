@@ -10,6 +10,7 @@ from app.agent.service import AgentWorkflowService, WorkflowConflictError
 from app.agent.state import AgentState
 from app.agent.steps import InMemoryAgentStepSink
 from app.llm.errors import LLMRequestRejectedError
+from app.nl2sql.errors import SchemaSelectionError
 
 
 class ScriptedActions:
@@ -261,3 +262,21 @@ def test_verification_loop_stops_after_three_total_generation_attempts() -> None
     assert result.state["attempts"] == 3
     assert actions.generations == 3
     assert actions.executions == 3
+
+
+class InvalidSelectionActions(ScriptedActions):
+    def select_schema(self, state: AgentState) -> AgentState:
+        raise SchemaSelectionError()
+
+
+def test_selection_failure_keeps_specific_error_on_start_and_checkpoint_replay() -> None:
+    actions = InvalidSelectionActions()
+    workflow = service(actions, InMemoryAgentStepSink())
+    run = request()
+    first = workflow.start(run)
+    replay = workflow.start(run)
+    assert first.status == replay.status == "FAILED"
+    assert (
+        first.state["error_code"] == replay.state["error_code"] == "NL2SQL_SCHEMA_SELECTION_FAILED"
+    )
+    assert actions.executions == 0

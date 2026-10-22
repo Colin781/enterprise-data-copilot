@@ -185,3 +185,16 @@ p11-load:
 		-e P11_PASSWORD=$${PLATFORM_BOOTSTRAP_PASSWORD:-change-me-demo} \
 		-v "$(CURDIR)/performance/k6:/scripts:ro" grafana/k6:1.0.0 \
 		run /scripts/p11-platform-and-sse.js
+# Week 3-10 upgrade: offline checks do not call external model services.
+.PHONY: upgrade-rag-eval upgrade-extraction-eval upgrade-agent-demo upgrade-query-plans
+upgrade-rag-eval:
+	cd agent-service && uv run python -m app.retrieval.benchmark --document ../knowledge/northwind/retail-metrics-v1.md --cases ../evaluation/northwind/rag-gold-v1.jsonl --output ../evaluation/northwind/week5-retrieval-offline.json
+
+upgrade-extraction-eval:
+	cd agent-service && uv run python -m app.knowledge_graph.evaluation --cases ../evaluation/northwind/graph-gold-v1.jsonl --output ../evaluation/northwind/week7-extraction-offline.json
+
+upgrade-agent-demo:
+	cd agent-service && uv run python -m app.agent.demo
+
+upgrade-query-plans:
+	cd agent-service && uv run python -m app.evaluation.query_plans --output ../evaluation/northwind/week3-query-plans.json

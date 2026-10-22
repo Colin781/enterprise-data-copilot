@@ -1,0 +1,47 @@
+{
+  "mode": "read_only_full_stack_smoke",
+  "model_calls": 0,
+  "checks": [
+    {
+      "name": "platform_health",
+      "status": 200
+    },
+    {
+      "name": "web_health",
+      "status": 200
+    },
+    {
+      "name": "anonymous_graph_denied",
+      "status": 401
+    },
+    {
+      "name": "admin_login",
+      "status": 200
+    },
+    {
+      "name": "graph_search",
+      "status": 200
+    },
+    {
+      "name": "knowledge_lexical_search",
+      "status": 200
+    },
+    {
+      "name": "mcp_initialize",
+      "status": 200
+    },
+    {
+      "name": "mcp_tools/list",
+      "status": 200
+    },
+    {
+      "name": "mcp_tools/call",
+      "status": 200
+    },
+    {
+      "name": "mcp_resources/read",
+      "status": 200
+    }
+  ],
+  "mcp_tool_count": 5
+}

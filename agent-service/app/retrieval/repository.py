@@ -12,7 +12,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.retrieval.embeddings import cosine_similarity, lexical_tokens
-from app.retrieval.errors import RetrievalStoreError
+from app.retrieval.errors import EmbeddingProfileError, RetrievalStoreError
 from app.retrieval.models import (
     MetricChunk,
     PendingMetricChunk,
@@ -185,9 +185,15 @@ class PostgresMetricKnowledgeRepository:
         config: PlatformKnowledgeDatabaseConfig,
         *,
         connection_factory: Callable[..., psycopg.Connection] = psycopg.connect,
+        embedding_profile: str = "hashing:64",
+        vector_search_mode: str = "exact",
     ) -> None:
         self._config = config
         self._connect = connection_factory
+        self._embedding_profile = embedding_profile
+        if vector_search_mode not in {"exact", "approximate"}:
+            raise ValueError("invalid vector search mode")
+        self._vector_search_mode = vector_search_mode
         self._documents = f"{config.schema}.metric_documents"
         self._chunks = f"{config.schema}.metric_chunks"
 
@@ -251,8 +257,9 @@ class PostgresMetricKnowledgeRepository:
                     cursor.executemany(
                         f"INSERT INTO {self._chunks} "
                         "(id, tenant_id, document_id, document_version, section_key, "
-                        "section_title, source_locator, ordinal, content, embedding, created_at) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s)",
+                        "section_title, source_locator, ordinal, content, embedding, created_at, "
+                        "embedding_profile) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)",
                         [
                             (
                                 uuid4(),
@@ -266,6 +273,7 @@ class PostgresMetricKnowledgeRepository:
                                 chunk.content,
                                 _vector_literal(chunk.embedding),
                                 now,
+                                self._embedding_profile,
                             )
                             for chunk in chunks
                         ],
@@ -301,14 +309,43 @@ class PostgresMetricKnowledgeRepository:
         self, tenant_id: UUID, embedding: Sequence[float], limit: int
     ) -> tuple[RankedChunk, ...]:
         literal = _vector_literal(embedding)
+        try:
+            with self._connect(**self._config.connection_parameters()) as connection:
+                mixed = connection.execute(
+                    f"SELECT EXISTS (SELECT 1 FROM {self._chunks} c "
+                    f"JOIN {self._documents} d ON d.id=c.document_id "
+                    "WHERE c.tenant_id=%s AND d.status='ACTIVE' AND c.embedding_profile<>%s)",
+                    (tenant_id, self._embedding_profile),
+                ).fetchone()[0]
+                if mixed:
+                    raise EmbeddingProfileError()
+        except psycopg.Error as error:
+            raise RetrievalStoreError() from error
+        dimensions = len(embedding)
+        if not 16 <= dimensions <= 2048:
+            raise ValueError("invalid embedding dimension")
+        # Dimension comes only from a validated integer, never from user SQL.
+        distance = f"c.embedding::vector({dimensions}) <=> %s::vector({dimensions})"
+        if self._vector_search_mode == "exact":
+            sql = (
+                f"WITH candidates AS MATERIALIZED (SELECT c.*, d.title AS document_title "
+                f"FROM {self._chunks} c JOIN {self._documents} d ON d.id=c.document_id "
+                "AND d.tenant_id=c.tenant_id WHERE c.tenant_id=%s AND d.status='ACTIVE' "
+                f"AND c.embedding_profile=%s AND vector_dims(c.embedding)={dimensions}) "
+                f"SELECT c.*, 1-({distance}) AS score FROM candidates c "
+                f"ORDER BY {distance}, c.ordinal ASC LIMIT %s"
+            )
+            return self._search(sql, (tenant_id, self._embedding_profile, literal, literal, limit))
         sql = (
             f"SELECT c.*, d.title AS document_title, "
-            "1 - (c.embedding <=> %s::vector) AS score "
+            f"1 - ({distance}) AS score "
             f"FROM {self._chunks} c JOIN {self._documents} d ON d.id = c.document_id "
             "WHERE c.tenant_id = %s AND d.status = 'ACTIVE' "
-            "ORDER BY c.embedding <=> %s::vector, c.ordinal ASC LIMIT %s"
+            "AND c.embedding_profile = %s "
+            f"AND vector_dims(c.embedding) = {dimensions} "
+            f"ORDER BY {distance}, c.ordinal ASC LIMIT %s"
         )
-        return self._search(sql, (literal, tenant_id, literal, limit))
+        return self._search(sql, (literal, tenant_id, self._embedding_profile, literal, limit))
 
     def corpus_revision(self, tenant_id: UUID) -> str:
         try:
@@ -331,6 +368,9 @@ class PostgresMetricKnowledgeRepository:
             with self._connect(
                 **self._config.connection_parameters(), row_factory=dict_row
             ) as connection:
+                if self._vector_search_mode == "approximate":
+                    connection.execute("SET LOCAL hnsw.iterative_scan = 'strict_order'")
+                connection.execute("SET LOCAL statement_timeout = '5s'")
                 rows = connection.execute(sql, parameters).fetchall()
         except psycopg.Error as error:
             raise RetrievalStoreError() from error

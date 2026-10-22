@@ -1,4 +1,6 @@
-# 总体架构（P0）
+# 总体架构（当前实现）
+
+本文以 P0 的服务边界为基础，已同步统一 Java 分层结构。全仓库阅读入口见 [代码阅读导航](code-reading-guide.md)，具体环境和启动步骤见 [当前本地启动手册](current-local-startup-guide.md)。
 
 ## 设计目标
 
@@ -6,7 +8,8 @@
 
 ```mermaid
 flowchart LR
-    U[Browser / Analyst] -->|HTTPS + SSE| J[Java Platform API]
+    U[Browser / Analyst] -->|same-origin HTTP + SSE| W[Next.js Web / Server Proxy]
+    W -->|JWT + SSE| J[Java Platform API]
 
     subgraph Trust[企业业务与信任边界]
       J --> AUTH[Auth / RBAC / Tenant]
@@ -15,7 +18,7 @@ flowchart LR
       J --> R[(Redis)]
     end
 
-    J -->|Service token + signed identity\nIdempotency-Key + traceparent| P[Python Agent Service]
+    J -->|Service token + trusted identity headers\nIdempotency-Key + traceparent| P[Python Agent Service]
 
     subgraph AI[受约束的分析工作流]
       P --> RET[Metric + Schema Retrieval]
@@ -35,7 +38,7 @@ flowchart LR
 |---|---|---|
 | 用户登录、JWT、会话 | 拥有 | 不实现 |
 | 租户和 RBAC | 拥有并签发内部身份声明 | 只消费可信声明并再次校验资源范围 |
-| 数据源登记、密钥管理 | 拥有 | 只接收短期引用或服务端解析后的授权配置 |
+| 数据源登记、连接范围 | 管理元数据并校验与固定演示配置一致 | 使用环境变量装配的固定 Northwind 只读连接，尚不按 ID 动态解析连接 |
 | 任务、状态机、审批、审计 | 权威数据源 | 报告步骤和中断原因，不越权变更审批结果 |
 | 模型调用、RAG、schema 选择 | 不实现 | 拥有 |
 | SQL 生成与 AST 检查 | 接收结构化结果 | 拥有，确定性 guard 是执行前最后一道应用防线 |
@@ -46,7 +49,9 @@ flowchart LR
 
 ## Java 平台内部组织
 
-Java 是单个 Spring Boot 工程，源码统一按层分包：`controller → service → repository → entity`；接口参数与响应放在 `dto/request`、`dto/response`，后台执行放在 `task`，Python 调用放在 `client/agent`，事件放在 `event`，配置放在 `config`。根启动包保持 `com.example.copilot`，接口和数据库契约沿用原定义。
+Java 是单个 Spring Boot 工程，普通请求由 `controller → service → repository` 处理，`entity` 定义持久化对象而不是另一个可启动的服务；接口参数与响应放在 `dto/request`、`dto/response`，状态／角色放在 `enums`，后台执行放在 `task`，Python 出站调用放在 `client/agent`，事件放在 `event`，配置放在 `config`。根启动包保持 `com.example.copilot`，接口和数据库契约沿用原定义。
+
+分析任务另有异步分支：Service 保存任务 → 事务提交后的事件 → `task` 中的 Dispatcher／Worker → `client/agent` → Python。Python 保存步骤／申请审批则从 Java `controller/InternalAgentCallbackController` 进入相应 Service。原模块分散的 Controller、Service、Repository 和实体已分别集中，业务能力没有因此合并成一个“大 Service”。
 
 完整目录、各层职责和“提交分析任务”的逐文件阅读顺序见 [Java 平台代码阅读指南](../platform-api/README.md)。
 
@@ -68,7 +73,7 @@ Java 是单个 Spring Boot 工程，源码统一按层分包：`controller → s
 7. 图表只使用校验后的结构化规范，不执行模型生成的代码。
 8. PostgreSQL 保存最终任务状态，Redis 丢失不得导致已完成任务不可追溯。
 9. 入站请求使用 W3C `traceparent`；Java/Python 只把低基数、脱敏属性写入 trace 和指标。
-10. 公开演示只能登记部署 allowlist 中的数据源主机，DSN 和 secret reference 永不出现在 API 响应。
+10. 当前部署只允许与固定 Northwind 配置完全匹配的数据源登记／查询，并保留主机 allowlist 校验；DSN 和 secret reference 永不出现在 API 响应。
 
 ## 可观测性边界
 
@@ -83,15 +88,18 @@ Java 是单个 Spring Boot 工程，源码统一按层分包：`controller → s
 ```mermaid
 sequenceDiagram
     participant U as Analyst
+    participant W as Web Server Proxy
     participant J as Java Platform API
     participant P as Python Agent
     participant D as Read-only DB
     participant S as Platform DB
 
-    U->>J: POST /api/analysis/jobs
+    U->>W: POST /api/platform/analysis/jobs
+    W->>J: POST /api/analysis/jobs
     J->>J: authenticate + tenant/RBAC + idempotency
     J->>S: create job
-    J-->>U: 202 + jobId
+    J-->>W: 202 + jobId
+    W-->>U: 202 + jobId
     J->>P: POST /internal/v1/runs
     P->>P: retrieve → plan → generate SQL
     P->>P: parse AST + allowlist + cost guard
@@ -104,7 +112,8 @@ sequenceDiagram
         P-->>J: structured decision + reason
         J->>S: persist rejection or approval request
     end
-    J-->>U: SSE progress / final result
+    J-->>W: SSE progress / final result
+    W-->>U: SSE progress / final result
 ```
 
 ## P0 风险登记

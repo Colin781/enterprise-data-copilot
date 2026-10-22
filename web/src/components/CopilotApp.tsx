@@ -1,13 +1,14 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api, actionableError } from "@/lib/api";
 import { watchJobEvents } from "@/lib/sse";
 import type { AgentStep, AnalysisJob, Approval, DataSource, MetricDocument, Session } from "@/lib/types";
 import { StructuredChart } from "./StructuredChart";
+import { KnowledgeGraphView } from "./KnowledgeGraphView";
 
-type View = "analysis" | "sources" | "knowledge" | "approvals" | "overview";
+type View = "analysis" | "sources" | "knowledge" | "approvals" | "overview" | "graph";
 type ResultTab = "answer" | "table" | "chart" | "sql";
 
 const terminal = new Set(["COMPLETED", "REJECTED", "FAILED", "CANCELLED"]);
@@ -32,14 +33,20 @@ const jobErrorMessages: Record<string, string> = {
   DATA_SOURCE_NOT_AVAILABLE: "该任务的数据源不再与当前 Northwind 演示配置匹配，请重新选择可用源。",
 };
 
+const subscribeToHydration = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
+
 export function CopilotApp() {
+  const hydrated = useSyncExternalStore(subscribeToHydration, clientSnapshot, serverSnapshot);
   const [session, setSession] = useState<Session | null>(() => loadSession());
   useEffect(() => {
     const logout = () => { sessionStorage.removeItem("copilot.session"); setSession(null); };
     window.addEventListener("copilot:unauthorized", logout);
     return () => window.removeEventListener("copilot:unauthorized", logout);
   }, []);
-  if (!session) return <Login onLogin={(value) => { sessionStorage.setItem("copilot.session", JSON.stringify(value)); setSession(value); }} />;
+  // The server cannot read sessionStorage; keep the first client render identical.
+  if (!hydrated || !session) return <Login onLogin={(value) => { sessionStorage.setItem("copilot.session", JSON.stringify(value)); setSession(value); }} />;
   return <Workspace session={session} onLogout={() => { sessionStorage.removeItem("copilot.session"); setSession(null); }} />;
 }
 
@@ -101,7 +108,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [refresh]);
   const nav: { id: View; label: string; admin?: boolean }[] = [
     { id: "analysis", label: "分析工作台" }, { id: "sources", label: "数据源" },
-    { id: "knowledge", label: "指标知识" }, { id: "approvals", label: "审批中心", admin: true },
+    { id: "knowledge", label: "指标知识" }, { id: "graph", label: "关系网络" }, { id: "approvals", label: "审批中心", admin: true },
     { id: "overview", label: "管理概览", admin: true },
   ];
   return (
@@ -121,6 +128,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {view === "analysis" && <AnalysisView session={session} sources={sources} initialJobs={jobs} onJobsChanged={refresh} onOpenApprovals={() => setView("approvals")} />}
           {view === "sources" && <SourcesView session={session} sources={sources} isAdmin={isAdmin} onChanged={refresh} />}
           {view === "knowledge" && <KnowledgeView session={session} documents={documents} isAdmin={isAdmin} onChanged={refresh} />}
+          {view === "graph" && <KnowledgeGraphView session={session} />}
           {view === "approvals" && isAdmin && <ApprovalsView session={session} approvals={approvals} jobs={jobs} onChanged={refresh} />}
           {view === "overview" && isAdmin && <Overview sources={sources} documents={documents} jobs={jobs} approvals={approvals} />}
         </>}
@@ -289,7 +297,7 @@ function Overview({ sources, documents, jobs, approvals }: { sources: DataSource
 function Metric({ label, value, note }: { label: string; value: number; note: string }) { return <article className="metric-card panel"><span>{label}</span><strong>{value}</strong><small>{note}</small></article>; }
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) { return <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section className="modal panel" role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><button onClick={onClose} aria-label="关闭">×</button></header>{children}</section></div>; }
 function StatusLegend() { return <div className="status-legend"><span><i className="live-dot" />实时进度</span><span>PostgreSQL 最终状态</span></div>; }
-function NavIcon({ name }: { name: View }) { const paths: Record<View, string> = { analysis: "M4 5h16M4 12h10M4 19h7", sources: "M5 5c0-2 14-2 14 0v14c0 2-14 2-14 0V5m0 7c0 2 14 2 14 0M5 5c0 2 14 2 14 0", knowledge: "M5 4h10a4 4 0 0 1 4 4v12H8a3 3 0 0 1-3-3V4m3 16a3 3 0 0 1 3-3h8", approvals: "M6 3h12v18H6zM9 8h6m-6 4h6m-6 4h3", overview: "M4 20V10h4v10m4 0V4h4v16m4 0H2" }; return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]} /></svg>; }
+function NavIcon({ name }: { name: View }) { const paths: Record<View, string> = { analysis: "M4 5h16M4 12h10M4 19h7", sources: "M5 5c0-2 14-2 14 0v14c0 2-14 2-14 0V5m0 7c0 2 14 2 14 0M5 5c0 2 14 2 14 0", knowledge: "M5 4h10a4 4 0 0 1 4 4v12H8a3 3 0 0 1-3-3V4m3 16a3 3 0 0 1 3-3h8", graph: "M5 5h4v4H5zm10 10h4v4h-4zM15 3h4v4h-4zM9 7l6-2M9 9l6 6M17 7v8", approvals: "M6 3h12v18H6zM9 8h6m-6 4h6m-6 4h3", overview: "M4 20V10h4v10m4 0V4h4v16m4 0H2" }; return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]} /></svg>; }
 function displayCell(value: unknown): string { if (value == null) return "—"; if (typeof value === "object") return JSON.stringify(value); return String(value); }
 function shortId(value: string): string { return value.length > 12 ? `${value.slice(0, 8)}…` : value; }
 function formatTime(value: string): string { return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value)); }

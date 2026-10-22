@@ -1,0 +1,212 @@
+openapi: 3.1.0
+info:
+  title: Enterprise Data Copilot RAG, Graph and MCP APIs
+  version: 0.2.0
+  description: Java JWT boundary. Tenant and user identity are taken only from the verified token.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /api/graph/extract:
+    post:
+      operationId: extractKnowledgeGraph
+      description: ADMIN only. Replaces only this tenant/source graph after evidence validation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [source_id, source_name, text]
+              properties:
+                source_id: {type: string, format: uuid}
+                source_name: {type: string, minLength: 1, maxLength: 255}
+                text: {type: string, minLength: 1, maxLength: 20000}
+      responses:
+        '200':
+          $ref: '#/components/responses/Subgraph'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/graph/search:
+    post:
+      operationId: searchKnowledgeGraph
+      requestBody:
+        $ref: '#/components/requestBodies/GraphQuery'
+      responses:
+        '200':
+          $ref: '#/components/responses/Subgraph'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/graph/path:
+    post:
+      operationId: knowledgeGraphPath
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [source, target]
+              properties:
+                source: {type: string, minLength: 1, maxLength: 80}
+                target: {type: string, minLength: 1, maxLength: 80}
+                depth: {type: integer, minimum: 1, maximum: 3, default: 3}
+                query: {type: string, maxLength: 4000}
+                limit: {type: integer, minimum: 1, maximum: 100}
+      responses:
+        '200':
+          $ref: '#/components/responses/Subgraph'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/graph/answer:
+    post:
+      operationId: answerWithGraphAndDocuments
+      requestBody:
+        $ref: '#/components/requestBodies/GraphQuery'
+      responses:
+        '200':
+          description: Evidence-backed answer or explicit refusal. Citation ids are checked server-side.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [answer, should_answer, citations, graph]
+                properties:
+                  answer: {type: string}
+                  should_answer: {type: boolean}
+                  citations: {type: array, items: {type: object}}
+                  graph: {$ref: '#/components/schemas/Subgraph'}
+        default:
+          $ref: '#/components/responses/Error'
+  /api/knowledge/search:
+    post:
+      operationId: searchKnowledgeDocuments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                query: {type: string, minLength: 1, maxLength: 4000}
+                mode: {type: string, enum: [lexical, vector, hybrid, hybrid_rerank], default: hybrid}
+                limit: {type: integer, minimum: 1, maximum: 20, default: 5}
+                depth: {type: integer, minimum: 0, maximum: 3}
+      responses:
+        '200':
+          description: Ranked document chunks with per-channel scores and versioned citations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [query, mode, corpus_revision, hits, citations, should_answer]
+                properties:
+                  query: {type: string}
+                  mode: {type: string}
+                  corpus_revision: {type: string}
+                  hits: {type: array, items: {type: object}}
+                  citations: {type: array, items: {type: object}}
+                  should_answer: {type: boolean}
+        default:
+          $ref: '#/components/responses/Error'
+  /api/mcp:
+    post:
+      operationId: mcpStreamableHttp
+      description: >-
+        Official SDK stateless Streamable HTTP, JSON response mode. Accept must include
+        application/json and text/event-stream. POST supports initialize, notifications,
+        tools/list, tools/call and resources/read. Five read-only tools. No arbitrary SQL or Cypher.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jsonrpc, method]
+              properties:
+                jsonrpc: {type: string, const: '2.0'}
+                id: {type: [string, integer]}
+                method: {type: string}
+                params: {type: object}
+      responses:
+        '200':
+          description: MCP JSON-RPC response.
+          content:
+            application/json:
+              schema: {type: object}
+        '202':
+          description: Notification accepted; no response body.
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  requestBodies:
+    GraphQuery:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            properties:
+              query: {type: string, maxLength: 4000, default: ''}
+              depth: {type: integer, minimum: 0, maximum: 3, default: 1}
+              limit: {type: integer, minimum: 1, maximum: 100, default: 60}
+  responses:
+    Subgraph:
+      description: Bounded, tenant-scoped graph including source evidence.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Subgraph'}
+    Error:
+      description: >-
+        401 unauthenticated, 403 forbidden, 409 RAG_REINDEX_REQUIRED,
+        422 invalid input/evidence, 429 rate limit (Retry-After=60),
+        502 provider error, 503 disabled/unavailable graph.
+      content:
+        application/json:
+          schema: {type: object}
+  schemas:
+    Evidence:
+      type: object
+      required: [id, kind, source_id, source_name, evidence, confidence, extracted_at]
+      properties:
+        id: {type: string}
+        kind: {type: string}
+        source_id: {type: string, format: uuid}
+        source_name: {type: string}
+        evidence: {type: string}
+        confidence: {type: number, minimum: 0, maximum: 1}
+        extracted_at: {type: string, format: date-time}
+    Node:
+      allOf:
+        - $ref: '#/components/schemas/Evidence'
+        - type: object
+          required: [name]
+          properties:
+            name: {type: string}
+            kind: {enum: [Metric, Table, Column, BusinessTerm, Document, DataSource]}
+    Edge:
+      allOf:
+        - $ref: '#/components/schemas/Evidence'
+        - type: object
+          required: [source, target]
+          properties:
+            source: {type: string}
+            target: {type: string}
+            kind: {enum: [DEFINED_IN, DERIVED_FROM, USES_COLUMN, BELONGS_TO, RELATED_TO, JOINS_WITH]}
+    Subgraph:
+      type: object
+      required: [nodes, edges, truncated]
+      properties:
+        nodes: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/Node'}}
+        edges: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Edge'}}
+        truncated: {type: boolean}

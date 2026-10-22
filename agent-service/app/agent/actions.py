@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections.abc import Coroutine, Sequence
 from typing import Any
 from uuid import UUID
@@ -10,6 +11,7 @@ from app.agent.answering import describe_sql_result
 from app.agent.charting import build_chart_spec
 from app.agent.state import AgentState
 from app.data_sources.models import DataSourceConfig
+from app.llm.errors import LLMInvalidResponseError
 from app.llm.models import LLMMessage
 from app.llm.structured import StructuredLLMClient
 from app.metadata.introspection import PostgresSchemaIntrospector
@@ -18,7 +20,7 @@ from app.nl2sql.errors import NL2SQLPolicyError, SchemaSelectionError
 from app.nl2sql.models import NL2SQLDraft
 from app.nl2sql.prompts import generation_messages, repair_messages, selection_messages
 from app.nl2sql.question_guard import QuestionGuard
-from app.nl2sql.table_references import normalize_reported_tables
+from app.nl2sql.table_references import catalog_selection_model, normalize_reported_tables
 from app.observability import SQL_REJECTIONS
 from app.query_safety.cost import QueryCostEstimator
 from app.query_safety.errors import SQLPolicyViolationError
@@ -123,19 +125,47 @@ class NorthwindAgentActions:
             ),
             messages[1],
         )
-        result = _run(
-            self._llm.generate(
-                messages=_messages(messages),
-                response_model=ConfidentTableSelection,
-            )
+        response_model = catalog_selection_model(
+            ConfidentTableSelection,
+            allowed_tables=policy.allowed_tables,
+            allowed_schema=policy.allowed_schema,
         )
-        selected = tuple(dict.fromkeys(result.output.tables))
-        if (
-            not selected
-            or len(selected) != len(result.output.tables)
-            or not set(selected).issubset(policy.allowed_tables)
-        ):
-            raise SchemaSelectionError()
+        # A structurally valid model response can still contain invalid table names.
+        # Allow one correction, but validate every attempt against the same catalog.
+        for attempt in range(2):
+            try:
+                result = _run(
+                    self._llm.generate(
+                        messages=_messages(messages),
+                        response_model=response_model,
+                    )
+                )
+            except LLMInvalidResponseError as error:
+                raise SchemaSelectionError() from error
+            try:
+                selected = normalize_reported_tables(
+                    result.output.tables, allowed_schema=policy.allowed_schema
+                )
+                if not selected or not set(selected).issubset(policy.allowed_tables):
+                    raise SchemaSelectionError()
+            except SchemaSelectionError:
+                if attempt == 1:
+                    raise
+                messages = (
+                    *messages,
+                    (
+                        "user",
+                        json.dumps(
+                            {
+                                "safe_error_code": SchemaSelectionError.code,
+                                "instruction": "Return unique exact unqualified table names "
+                                "from the original table_catalog, with a confidence number.",
+                            }
+                        ),
+                    ),
+                )
+            else:
+                break
         restricted = policy.restrict_to_tables(frozenset(selected))
         return AgentState(
             candidate_tables=list(selected),

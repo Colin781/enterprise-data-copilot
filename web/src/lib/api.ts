@@ -7,6 +7,7 @@ import type {
   Session,
   TokenResponse,
 } from "./types";
+import type { GraphAnswer, Subgraph } from "./graph";
 
 export class ApiClientError extends Error {
   constructor(
@@ -33,7 +34,7 @@ async function request<T>(
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     throw new ApiClientError(
-      typeof body.message === "string" ? body.message : "请求未完成，请稍后重试。",
+      typeof body.message === "string" ? body.message : typeof body.detail === "string" ? body.detail : "请求未完成，请稍后重试。",
       response.status,
       typeof body.code === "string" ? body.code : "REQUEST_FAILED",
       typeof body.trace_id === "string" ? body.trace_id : undefined,
@@ -43,6 +44,16 @@ async function request<T>(
 }
 
 export const api = {
+  graphSearch: (token: string, query: string, depth = 1) => request<Subgraph>("/graph/search", token,
+    { method: "POST", body: JSON.stringify({ query, depth, limit: 60 }) }),
+  graphPath: (token: string, source: string, target: string) => request<Subgraph>("/graph/path", token,
+    { method: "POST", body: JSON.stringify({ source, target, depth: 3 }) }),
+  graphAnswer: (token: string, query: string) => request<GraphAnswer>("/graph/answer", token,
+    { method: "POST", body: JSON.stringify({ query }) }),
+  graphExtract: (token: string, sourceId: string, sourceName: string, text: string) =>
+    request<Subgraph>("/graph/extract", token, { method: "POST", body: JSON.stringify({
+      source_id: sourceId, source_name: sourceName, text,
+    }) }),
   async login(tenantSlug: string, email: string, password: string): Promise<Session> {
     const result = await request<TokenResponse>("/auth/login", undefined, {
       method: "POST",

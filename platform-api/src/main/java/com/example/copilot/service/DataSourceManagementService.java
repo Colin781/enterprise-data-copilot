@@ -6,6 +6,7 @@ import com.example.copilot.dto.response.DataSourceResource;
 import com.example.copilot.entity.DataSource;
 import com.example.copilot.exception.DataSourceHostNotAllowedException;
 import com.example.copilot.exception.DemoDataSourceOnlyException;
+import com.example.copilot.exception.ResourceNotFoundException;
 import com.example.copilot.repository.DataSourceRepository;
 import com.example.copilot.security.CallerIdentity.Caller;
 import java.util.List;
@@ -52,6 +53,14 @@ public class DataSourceManagementService {
                 request.secretRef()));
         auditService.recordSuccess(
                 caller.tenantId(), caller.userId(), "DATA_SOURCE_CREATED", "DATA_SOURCE", dataSource.getId(), traceId);
+        return DataSourceResource.from(dataSource);
+    }
+
+    public DataSourceResource get(UUID id, Caller caller) {
+        var dataSource = dataSourceRepository
+                .findByIdAndTenantIdAndEnabledTrue(id, caller.tenantId())
+                .filter(registrationProperties::matches)
+                .orElseThrow(() -> new ResourceNotFoundException("Data Source Not Found"));
         return DataSourceResource.from(dataSource);
     }
 

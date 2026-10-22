@@ -1,6 +1,16 @@
 # 本地开发
 
-Java 当前使用统一的按层目录；入口、调用链与源码导航见 [Java 平台代码阅读指南](../platform-api/README.md)。从旧业务模块目录切换后，宿主机开发请先停止旧 Java 进程，在 `platform-api` 执行一次 `./mvnw clean`，再从仓库根目录执行 `make dev-platform`，清除旧包编译产物。完整 Compose 模式使用 `make stack-up` 重建镜像即可。
+首次运行以 [当前本地启动手册](current-local-startup-guide.md) 为准；想理解整体代码，先看 [全项目代码阅读导航](code-reading-guide.md)，再看 [Java 平台代码阅读指南](../platform-api/README.md)。本文主要用于开发与验收命令查询，后面的 P2～P12 小节说明各阶段引入的能力，不是要求重新按阶段实现一遍。
+
+## 从旧 Java 布局升级
+
+Java 当前为单个 Spring Boot 工程、统一按层分包。宿主机开发先在旧 Java 终端按 `Ctrl+C`，再从项目根目录执行一次：
+
+```bash
+(cd platform-api && ./mvnw clean)
+```
+
+然后按本文启动依赖和服务；这一步同时适用于之后使用 `make dev` 的已有环境。完整 Compose 模式使用 `make stack-up` 重建镜像。包布局调整不改变接口、环境变量或数据库，不需要删除卷，也不需要重建账号或令牌。
 
 ## 前置工具
 
@@ -44,11 +54,15 @@ P4 增加了 `LLM_*` 配置。自动化测试使用 Fake LLM，不需要 API Key
 
 ## 单独启动服务
 
+先运行 `make compose-up`。下列三个命令分别在三个终端运行，而不是在同一个前台进程后依次粘贴：
+
 ```bash
 make dev-platform  # http://localhost:8080/health
 make dev-agent     # http://localhost:8000/health
 make dev-web       # http://localhost:3000 and /health
 ```
+
+如已安装 Web 依赖但 pnpm 签名校验失败，第三个终端改用 `make PNPM=./node_modules/.bin/next dev-web`。不要直接 `source .env`，也不要假设 IDE 或单独的 `java -jar` 会自动加载它；非 Makefile 启动必须自行注入环境变量。
 
 ## 验证
 
@@ -90,11 +104,13 @@ uv run python -m app.metadata.cli --check ../metadata/northwind-schema-v1.json
 
 ## P3 Java 平台
 
+本节描述 P3 引入的基础能力；当前 Java 已接通 Python Agent、审批、异步任务和 SSE，逐文件阅读顺序见 [Java 平台指南](../platform-api/README.md)。
+
 Java 测试从 P3 起使用 Testcontainers 启动临时 PostgreSQL 17，因此执行 `make test` 时 Docker 必须可用。测试结束后临时容器会自动清理。
 
 平台现在提供登录、租户内数据源登记、任务创建和任务查询接口。OpenAPI 定义位于 `contracts/openapi-platform.yaml`。初始租户和管理员不通过匿名互联网接口创建，应由部署流程在平台库中安全配置；自动化测试会为每个用例创建独立夹具。
 
-数据库容器就绪不等于完整分析功能就绪。P3 会运行平台 Flyway 迁移，但调用 Python Agent、查询业务数据库和生成答案仍属于后续阶段；下游依赖的独立 readiness 语义也尚未实现。
+数据库容器就绪不等于完整分析功能就绪。当前 Platform 启动时校验／执行 Flyway 迁移，Java `/health` 成功也不代表 Agent 或外部模型可用；完整业务仍需验证三个服务、指标文档和一条真实分析问题。2026-10-18 的 Java 重构启动验收只覆盖 Java 构建、真实依赖、接口及权限，详情见 [验收记录](../platform-api/README.md#7-本次分层重构的启动验收2026-10-18)。
 
 ## P4 模型适配与结构化输出
 

@@ -6,6 +6,7 @@ import psycopg
 import pytest
 
 from app.retrieval.embeddings import HashingEmbeddingProvider
+from app.retrieval.errors import EmbeddingProfileError
 from app.retrieval.repository import (
     PlatformKnowledgeDatabaseConfig,
     PostgresMetricKnowledgeRepository,
@@ -59,13 +60,37 @@ def repository() -> Iterator[PostgresMetricKnowledgeRepository]:
                         'simple', coalesce(section_title, '') || ' ' || coalesce(content, '')
                     )
                 ) STORED,
-                embedding vector(64) NOT NULL, created_at timestamptz NOT NULL
+                embedding vector NOT NULL, created_at timestamptz NOT NULL,
+                embedding_profile varchar(300) NOT NULL DEFAULT 'hashing:64'
             )
             """
         )
     yield PostgresMetricKnowledgeRepository(config)
     with psycopg.connect(**config.connection_parameters(), autocommit=True) as connection:
         connection.execute("DROP SCHEMA IF EXISTS p6_test CASCADE")
+
+
+def test_embedding_profile_and_dimension_change_requires_reingestion(repository):
+    tenant = uuid4()
+    initial = MetricRetrievalService(repository=repository)
+    kwargs = dict(
+        tenant_id=tenant,
+        title="Revenue",
+        source_name="m.md",
+        source_type="MARKDOWN",
+        payload=b"# Revenue\nRevenue uses quantity and price.",
+    )
+    initial.ingest(**kwargs)
+    replacement_repo = PostgresMetricKnowledgeRepository(
+        repository._config, embedding_profile="integration-test:384"
+    )
+    replacement = MetricRetrievalService(
+        repository=replacement_repo, embedding_provider=HashingEmbeddingProvider(384)
+    )
+    with pytest.raises(EmbeddingProfileError):
+        replacement.retrieve(tenant_id=tenant, query="Revenue", mode="vector")
+    replacement.ingest(**kwargs)
+    assert replacement.retrieve(tenant_id=tenant, query="Revenue", mode="vector").hits
 
 
 def test_postgres_full_text_pgvector_tenant_scope_and_version_invalidation(

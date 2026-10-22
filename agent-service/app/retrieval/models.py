@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 SourceType = Literal["MARKDOWN", "PDF"]
-RetrievalMode = Literal["lexical", "vector", "hybrid"]
+RetrievalMode = Literal["lexical", "vector", "hybrid", "hybrid_rerank"]
 
 
 class DocumentSection(BaseModel):
@@ -86,6 +86,7 @@ class RetrievalHit(BaseModel):
     lexical_score: float | None = None
     vector_score: float | None = None
     fused_score: float = Field(ge=0)
+    rerank_score: float | None = None
 
 
 class RetrievalResult(BaseModel):

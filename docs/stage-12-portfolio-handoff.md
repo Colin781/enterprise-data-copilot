@@ -8,6 +8,12 @@
 - `make verify-p12` 自动检查关键文档、数据集数量、报告字段、Docker/负载资产和 README 必须章节。
 - `make verify-all` 是 P1～P12 的统一本地验收入口。
 
+## 维护期阅读与启动入口
+
+Java 统一分层后，交接优先阅读 [当前本地启动手册](current-local-startup-guide.md)、[全项目代码阅读导航](code-reading-guide.md)、[Java 平台指南](../platform-api/README.md)，再查 [开发与验收命令](development.md)。已有环境升级须清除旧 Java 包的编译产物，但不删除数据卷或重置密钥；完整操作见启动手册第 0 节。
+
+P0～P12 的阶段文档保留当时的验收结果。2026-10-18 的 33 条 Java 测试及开发／生产 JAR 启动验收另记于 Java 指南，不冒充一次新的全量验收或已完成公网发布。
+
 ## 发布型交付
 
 以下项目需要仓库之外的账号或人工动作，因此保留为发布清单，不能伪装成自动完成：

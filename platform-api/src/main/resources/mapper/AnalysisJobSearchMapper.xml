@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.copilot.mapper.AnalysisJobSearchMapper">
+
+    <resultMap id="searchItemMap"
+               type="com.example.copilot.dto.response.AnalysisJobSearchItem">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID"/>
+            <arg column="question" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="data_source_id" javaType="java.util.UUID"/>
+            <arg column="data_source_name" javaType="java.lang.String"/>
+            <arg column="created_by" javaType="java.util.UUID"/>
+            <arg column="created_by_name" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="joinedTables">
+        FROM copilot.analysis_jobs j
+        JOIN copilot.data_sources ds
+        ON ds.id = j.data_source_id
+        AND ds.tenant_id = j.tenant_id
+        JOIN copilot.app_users u
+        ON u.id = j.created_by
+        AND u.tenant_id = j.tenant_id
+    </sql>
+
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        <include refid="joinedTables"/>
+        <where>
+            j.tenant_id = #{scope.tenantId}
+
+            <if test="scope.ownerId != null">
+                AND j.created_by = #{scope.ownerId}
+            </if>
+
+            <if test="scope.dataSourceId != null">
+                AND j.data_source_id = #{scope.dataSourceId}
+            </if>
+
+            <if test="criteria.statuses != null">
+                AND j.status IN
+                <foreach collection="criteria.statuses"
+                         item="status"
+                         open="("
+                         separator=","
+                         close=")">
+                    #{status}
+                </foreach>
+            </if>
+
+            <if test="criteria.keyword != null">
+                AND j.question LIKE #{criteria.keywordPattern} ESCAPE '!'
+            </if>
+
+            <if test="criteria.createdFrom != null">
+                AND j.created_at &gt;= #{criteria.createdFrom}
+            </if>
+
+            <if test="criteria.createdTo != null">
+                AND j.created_at &lt; #{criteria.createdTo}
+            </if>
+        </where>
+    </select>
+
+    <select id="findPage" resultMap="searchItemMap">
+        SELECT
+        j.id,
+        j.question,
+        j.status,
+        j.created_at,
+        j.data_source_id,
+        ds.name AS data_source_name,
+        j.created_by,
+        u.display_name AS created_by_name
+        <include refid="joinedTables"/>
+        <where>
+            j.tenant_id = #{scope.tenantId}
+
+            <if test="scope.ownerId != null">
+                AND j.created_by = #{scope.ownerId}
+            </if>
+
+            <if test="scope.dataSourceId != null">
+                AND j.data_source_id = #{scope.dataSourceId}
+            </if>
+
+            <if test="criteria.statuses != null">
+                AND j.status IN
+                <foreach collection="criteria.statuses"
+                         item="status"
+                         open="("
+                         separator=","
+                         close=")">
+                    #{status}
+                </foreach>
+            </if>
+
+            <if test="criteria.keyword != null">
+                AND j.question LIKE #{criteria.keywordPattern} ESCAPE '!'
+            </if>
+
+            <if test="criteria.createdFrom != null">
+                AND j.created_at &gt;= #{criteria.createdFrom}
+            </if>
+
+            <if test="criteria.createdTo != null">
+                AND j.created_at &lt; #{criteria.createdTo}
+            </if>
+        </where>
+        ORDER BY j.created_at DESC, j.id DESC
+        LIMIT #{limit}
+        OFFSET #{offset}
+    </select>
+
+</mapper>

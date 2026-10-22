@@ -1,0 +1,25 @@
+{
+  "mode": "gold_replay_schema_validation",
+  "real_model_evaluation": false,
+  "cases": [
+    {
+      "id": "g001",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    {
+      "id": "g002",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    {
+      "id": "g003",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  ],
+  "limitation": "3 small fixtures; expand with real documents and Chinese examples"
+}

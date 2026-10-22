@@ -29,4 +29,9 @@ public class AuditService {
                 "{}",
                 Instant.now()));
     }
+
+    public void recordOutcome(UUID tenantId, UUID actorUserId, String action, String outcome, String traceId) {
+        auditEventRepository.save(new AuditEvent(UUID.randomUUID(), tenantId, actorUserId, action,
+                "INTELLIGENCE", null, outcome, traceId, "{}", Instant.now()));
+    }
 }

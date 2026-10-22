@@ -91,6 +91,9 @@ class AgentWorkflowService:
     @staticmethod
     def _snapshot_error_code(snapshot: Any) -> str | None:
         error_codes = {
+            "SchemaSelectionError": "NL2SQL_SCHEMA_SELECTION_FAILED",
+            "NL2SQLRepairExhaustedError": "NL2SQL_REPAIR_EXHAUSTED",
+            "NL2SQLPolicyError": "NL2SQL_QUESTION_REJECTED",
             "LLMAuthenticationError": "LLM_AUTHENTICATION_ERROR",
             "LLMConfigurationError": "LLM_CONFIGURATION_ERROR",
             "LLMInvalidResponseError": "LLM_INVALID_RESPONSE",

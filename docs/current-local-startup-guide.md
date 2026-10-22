@@ -6,6 +6,25 @@
 /Users/colin/Documents/ChatGPT/PyGPT/enterprise-data-copilot
 ```
 
+本文是当前运行入口；了解目录与调用链请看 [全项目代码阅读导航](code-reading-guide.md) 和 [Java 平台阅读指南](../platform-api/README.md)。阶段验收文档保留当时记录，不作为当前启动步骤。
+
+## 0. 升级到统一分层版本（已有环境先看）
+
+Java 当前仍是 `platform-api` 这一个 Spring Boot 工程，主类仍为 `com.example.copilot.PlatformApiApplication`。接口地址、端口、环境变量及数据库表不因本次分包重构改变，无需重新创建 `.env`、账号、token 或数据库卷。
+
+宿主机开发模式：先在旧 Java 终端按 `Ctrl+C`，然后从根目录执行一次：
+
+```bash
+cd /Users/colin/Documents/ChatGPT/PyGPT/enterprise-data-copilot
+(cd platform-api && ./mvnw clean)
+```
+
+接着按第 6～7 节运行 `make compose-up` 和三个应用服务。不要只启动新源码而留下 `target` 中旧包的 `.class`，否则可能出现重复 Bean。首次检出、没有旧构建产物时不必额外清理。
+
+完整 Compose 模式按第 4 节执行 `make stack-up`，会重建镜像；不要再同时启动本机三个服务。请勿使用 `down -v` 或删除旧数据源来解决包名迁移问题。
+
+2026-10-18 已对开发启动和生产 JAR 启动做真实 PostgreSQL／Redis 验收，33 条 Java 测试和健康、登录、数据源、任务详情、步骤、SSE、权限检查通过。详细边界见 [启动验收记录](../platform-api/README.md#7-本次分层重构的启动验收2026-10-18)：本次没有重新运行完整 Compose 应用镜像、Web 界面或真实模型端到端测试。验收进程与依赖容器已停止，数据卷保留，后续仍需按本文启动。
+
 ## 1. 运行组成
 
 完整系统包含 7 个服务：
@@ -247,7 +266,16 @@ make load-northwind
 
 ### 终端一：Platform API
 
-若刚从旧的按业务模块分包版本切换到统一分层版本，先停止旧 Java 进程，在 `platform-api` 目录执行一次 `./mvnw clean`，清除旧包的 `.class` 文件，再按下面的命令启动。完整 Compose 模式重新运行 `make stack-up` 即可。Java 代码导航见 [Java 平台代码阅读指南](../platform-api/README.md)。
+若从旧包布局升级，先完成第 0 节的一次性清理。主启动类位于 `platform-api/src/main/java/com/example/copilot/PlatformApiApplication.java`，IDE 中也启动这个类，但必须另外配置与 `.env` 一致的环境变量；IDE 不会因为根目录有 `.env` 就自动获得全部配置。推荐先使用下面的 Makefile 入口。
+
+在 IntelliJ IDEA 中直接启动时，打开 `Run → Edit Configurations → PlatformApiApplication`：
+
+1. 使用 `platform-api` 模块的 classpath 和 JDK 21。
+2. 将 `Working directory` 设为仓库根目录。
+3. 在 `Modify options` 中启用 `Environment variables`，点击该输入框右侧的 `Browse for .env files and scripts`，选择仓库根目录的 `.env`，保存配置。
+4. 先启动数据库、Redis 和 Agent，再运行 Java 主类；确认控制台出现 `Started PlatformApiApplication`，且 `http://localhost:8080/actuator/health` 返回 `UP`。
+
+如果 Makefile 可以启动而 IDEA 提示数据库密码认证失败，先检查上述环境文件是否真正保存到运行配置，不要修改已有数据库卷或重置密码。
 
 ```bash
 cd /Users/colin/Documents/ChatGPT/PyGPT/enterprise-data-copilot
@@ -268,6 +296,8 @@ Started PlatformApiApplication
 - 分析员：`analyst@northwind.local`
 - 初始密码：`change-me-demo`
 - 数据源：`Northwind read-only`
+
+若在宿主机与 Compose 连接配置之间切换，bootstrap 会保留旧登记，并在必要时用 `Northwind read-only (2)`、`(3)` 等不重名的名称补建匹配项；同配置重复启动不会重复登记。应选择当前匹配项，不要靠手动删除历史数据源来解决名称冲突。
 
 目前这是唯一可查询的数据源：Platform 会按完整连接元数据校验登记记录，Agent 使用对应的固定 Northwind 只读连接。开发热重载使用 `.env` 中的 `BUSINESS_DB_HOST`、`BUSINESS_DB_PORT`（默认 `localhost:5433`）；完整 Compose 自动将两端都设为 `business-db:5432`。如更改本机业务库地址，修改 `.env` 中的这两个字段并重启 Platform 与 Agent。旧的非匹配登记记录不会作为可选项，也不能创建新任务；本地默认 `PLATFORM_BOOTSTRAP_ENABLED=true` 时，Platform 会幂等补建匹配的演示源。关闭 bootstrap 的环境不会自动补建，需由管理员按部署配置登记一次匹配的演示源。
 
@@ -336,11 +366,13 @@ curl -fsS http://localhost:3000/health
 
 预期三个响应的 `status` 都是 `UP`。
 
-Spring Boot readiness 也可检查：
+Java 聚合健康状态（包含数据库、Redis 等已注册健康项）也可检查：
 
 ```bash
 curl -fsS http://localhost:8080/actuator/health
 ```
+
+`/health` 只说明应用能响应；`/actuator/health` 也不证明 OpenRouter 或真实分析回答可用。完整业务仍需按第 11～12 节上传文档并提交问题，不能只看到 `UP` 就认定端到端验收完成。
 
 如果端口被占用：
 
@@ -503,6 +535,7 @@ make stack-up
 
 ```bash
 cd /Users/colin/Documents/ChatGPT/PyGPT/enterprise-data-copilot
+# 从旧 Java 包布局升级时，先按第 0 节停止旧进程并执行一次 clean
 make compose-up
 ```
 

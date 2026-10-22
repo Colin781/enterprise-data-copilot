@@ -2,6 +2,8 @@
 
 Java 层是一个 Spring Boot 应用，启动入口是 [PlatformApiApplication](src/main/java/com/example/copilot/PlatformApiApplication.java)。源码统一按职责分层：HTTP 请求先进入 Controller，由 Service 处理业务，再通过 Repository 读写平台数据库；需要执行 AI 分析时，由后台任务调用 Python Agent。
 
+全仓库的阅读顺序与 Web／Python 路径见 [全项目代码阅读导航](../docs/code-reading-guide.md)，环境配置和三服务启动以 [当前本地启动手册](../docs/current-local-startup-guide.md) 为准。此目录不是 Maven 多模块工程，不需要分别启动 Controller、Service 或 task。
+
 ## 1. 先看整体目录
 
 所有生产代码都在 `src/main/java/com/example/copilot/` 下：
@@ -28,6 +30,8 @@ com.example.copilot
 ```
 
 数据库结构、账号和环境变量不在这些包中：`src/main/resources/application.yml` 保存应用配置，`src/main/resources/db/migration/` 保存 Flyway 数据库迁移。
+
+启动时先由主类扫描下级包并绑定配置；Flyway 校验／执行平台库迁移，Hibernate 再校验实体映射。开发环境启用的 `config/DevelopmentBootstrap` 补齐演示账号和匹配的数据源；应用就绪后 `task/AnalysisJobDispatcher` 恢复未完成任务。因此，启动故障先查配置、迁移和初始化日志，而不是逐个“启动业务模块”。
 
 ## 2. 普通请求怎么走
 
@@ -142,6 +146,17 @@ Java 全量验证在 `platform-api` 目录运行 `./mvnw test`，Docker 必须�
 接口 URL、JSON 字段、数据库表、迁移脚本和环境变量沿用现有定义。Maven 仍为单个 Spring Boot 工程，主启动类的包名仍是 `com.example.copilot`，可以扫描到全部下级包。
 
 宿主机开发从旧包布局切换后，先停止旧 Java 进程，在 `platform-api` 目录执行一次 `./mvnw clean`，再回到仓库根目录运行 `make dev-platform`。这样可清除 `target` 中残留的旧包类，避免重复 Spring Bean。完整容器模式执行 `make stack-up` 重新构建应用镜像即可。
+
+已填写根目录 `.env`、Docker 正常运行时，可从仓库根目录复制以下命令：
+
+```bash
+# 先在旧 Java 终端按 Ctrl+C；clean 只需在迁移旧包后执行一次
+(cd platform-api && ./mvnw clean)
+make compose-up
+make dev-platform
+```
+
+`make dev-platform` 使用 Makefile 导出的 `.env` 环境。不要直接 `source .env`；IDE 启动主类或手动 `java -jar` 时需自行注入相同环境。正常启动日志应包含 `Tomcat started on port 8080` 和 `Started PlatformApiApplication`；另一个终端用 `curl -fsS http://localhost:8080/actuator/health` 检查。分析业务还依赖 Agent 与 Web，启动步骤见手册。
 
 ## 7. 本次分层重构的启动验收（2026-10-18）
 

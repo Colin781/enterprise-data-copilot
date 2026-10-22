@@ -8,10 +8,15 @@ from pydantic import BaseModel
 
 from app.agent.api import router as agent_router
 from app.agent.factory import create_production_workflow_service
+from app.knowledge_graph.api import router as graph_router
+from app.knowledge_graph.repository import Neo4jGraphStore
+from app.knowledge_graph.service import KnowledgeGraphService
+from app.llm.factory import create_structured_llm_client
+from app.mcp_server import ServiceBoundary, build_mcp
 from app.observability import configure_observability, observe_http, prometheus_response
 from app.retrieval.api import router as knowledge_router
 from app.retrieval.factory import create_production_retrieval_service
-from app.settings import get_observability_settings, get_settings
+from app.settings import GraphSettings, get_observability_settings, get_settings
 
 
 class HealthResponse(BaseModel):
@@ -31,7 +36,29 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     with create_production_workflow_service(setup_checkpointer=True) as workflow:
         application.state.workflow_service = workflow
         application.state.retrieval_service = create_production_retrieval_service()
-        yield
+        store = None
+        llm = None
+        graph_settings = GraphSettings()
+        try:
+            if graph_settings.enabled:
+                store = Neo4jGraphStore(
+                    graph_settings.uri,
+                    graph_settings.user,
+                    graph_settings.password.get_secret_value(),
+                    graph_settings.database,
+                )
+                store.setup()
+                llm = create_structured_llm_client()
+                application.state.graph_service = KnowledgeGraphService(
+                    store, llm, application.state.retrieval_service
+                )
+            async with mcp.session_manager.run():
+                yield
+        finally:
+            if llm:
+                await llm.aclose()
+            if store:
+                store.close()
 
 
 app = FastAPI(
@@ -44,6 +71,9 @@ app = FastAPI(
 )
 app.include_router(agent_router)
 app.include_router(knowledge_router)
+app.include_router(graph_router)
+mcp = build_mcp(lambda: app.state)
+app.mount("/internal/mcp", ServiceBoundary(mcp.streamable_http_app()))
 
 
 @app.middleware("http")

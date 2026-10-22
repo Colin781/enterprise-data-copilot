@@ -2,6 +2,11 @@
 
 Internal FastAPI service for the Enterprise Data Copilot analysis workflow.
 
+For current configuration and startup, follow the [local startup guide](../docs/current-local-startup-guide.md).
+The [project reading guide](../docs/code-reading-guide.md) traces Web → Java → Python;
+Java now uses unified layer packages, while Python retains the capability modules described below.
+The P4–P8 paragraphs describe when each capability was introduced, not the project's current milestone.
+
 P4 provides a vendor-neutral `LLMProvider`, an OpenRouter/OpenAI-compatible adapter,
 strict Pydantic structured output, bounded retries and a no-network Fake LLM.
 
@@ -24,9 +29,23 @@ P8 keeps this service internal: Java now invokes the start endpoint from a bound
 executor, retries with the same job idempotency key, persists the returned final state, and exposes
 Redis-backed SSE progress to browsers. The Python service still never exposes a browser endpoint.
 
+Start from the repository root after configuring `.env` (keep Platform running in another terminal):
+
+```bash
+make compose-up
+make dev-agent
+```
+
+The Makefile exports the root `.env`. Settings resolve their own `.env` relative to the working
+directory: starting bare Uvicorn inside `agent-service/` does not automatically load the repository-root
+file. Prefer `make dev-agent` rather than copying secrets into a second file. Do not `source .env`,
+which contains values with spaces. Application health
+does not certify model connectivity or a completed end-to-end analysis.
+
+For dependency installation and tests, run from `agent-service/`:
+
 ```bash
 uv sync --all-groups
-uv run uvicorn app.main:app --reload --port 8000
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .

@@ -1,11 +1,16 @@
+import json
 from pathlib import Path
 
+import pytest
 from pydantic import SecretStr
 
 from app.agent.actions import NorthwindAgentActions
 from app.agent.state import AgentState
 from app.data_sources.models import DataSourceConfig
+from app.llm.fake import FakeLLMProvider
+from app.llm.structured import StructuredLLMClient
 from app.metadata.models import SchemaSnapshot
+from app.nl2sql.errors import SchemaSelectionError
 from app.query_safety.guard import SQLGuard
 from app.query_safety.models import (
     GuardedQuery,
@@ -125,3 +130,68 @@ def test_sql_result_keeps_truncation_through_composition() -> None:
 
     assert executed["result_truncated"] is True
     assert "结果已截断" in composed["answer"]
+
+
+class FixedIntrospector:
+    def inspect(self, *args: object) -> SchemaSnapshot:
+        return snapshot()
+
+
+def selection_actions(
+    responses: list[tuple[str, ...]],
+) -> tuple[NorthwindAgentActions, FakeLLMProvider]:
+    provider = FakeLLMProvider(
+        [json.dumps({"tables": tables, "confidence": 0.9}) for tables in responses]
+    )
+    adapter = actions()
+    adapter._llm = StructuredLLMClient(provider)
+    adapter._introspector = FixedIntrospector()
+    return adapter, provider
+
+
+def test_selection_normalizes_only_allowed_schema_qualified_tables() -> None:
+    adapter, provider = selection_actions([("northwind.orders", "northwind.order_details")])
+    result = adapter.select_schema(AgentState(question="Quarterly sales"))
+    assert result["candidate_tables"] == ["orders", "order_details"]
+    assert set(result["query_policy"]["allowed_tables"]) == {"orders", "order_details"}
+    assert len(provider.requests) == 1
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        ("public.orders",),
+        ("orders", "northwind.orders"),
+        ("missing_table",),
+    ],
+)
+def test_selection_corrects_invalid_names_once_without_widening_policy(
+    invalid: tuple[str, ...],
+) -> None:
+    adapter, provider = selection_actions([invalid, ("orders",)])
+    result = adapter.select_schema(AgentState(question="Order count"))
+    assert result["candidate_tables"] == ["orders"]
+    assert set(result["query_policy"]["allowed_tables"]) == {"orders"}
+    assert len(provider.requests) == 2
+    if invalid == ("orders", "northwind.orders"):
+        assert "NL2SQL_SCHEMA_SELECTION_FAILED" in provider.requests[1].messages[-1].content
+    allowed_names = provider.requests[0].response_schema["properties"]["tables"]["items"]["enum"]
+    assert "orders" in allowed_names
+    assert "northwind.orders" in allowed_names
+    assert "public.orders" not in allowed_names
+    assert "missing_table" not in allowed_names
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        ("public.orders",),
+        ("orders", "northwind.orders"),
+        ("missing_table",),
+    ],
+)
+def test_selection_stops_after_two_invalid_attempts(invalid: tuple[str, ...]) -> None:
+    adapter, provider = selection_actions([invalid, invalid])
+    with pytest.raises(SchemaSelectionError):
+        adapter.select_schema(AgentState(question="Order count"))
+    assert len(provider.requests) == 2

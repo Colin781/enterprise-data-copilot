@@ -1,8 +1,10 @@
 # 实施计划审视与收敛版路线
 
-## 当前执行状态（2026-09-18）
+## 当前执行状态（2026-10-18）
 
 P0～P12 的仓库内范围已全部完成，项目进入维护状态。最终证据入口为 `make verify-all`、`evaluation/northwind/p10-offline-baseline.json`、`evaluation/p11-local-performance.json`、`docs/stage-11-observability-deployment.md` 与 `docs/stage-12-portfolio-handoff.md`。公网域名/TLS、云端 Secret Manager、真人录屏和对外发布链接属于仓库外发布动作，不作为未完成代码里程碑，也不得伪造为已发布。
+
+维护更新：Java 已整理为统一按层分包的单体 Spring Boot 工程，原有接口、环境变量和数据库契约不变。开发启动、生产 JAR 启动与 33 条 Java 测试已验证；这次不是重新运行 P0～P12 全量验收。当前启动、目录与阅读顺序分别见 [启动手册](current-local-startup-guide.md)、[Java 平台指南](../platform-api/README.md) 和 [全项目阅读导航](code-reading-guide.md)。下文保留收敛路线的设计依据与阶段退出条件。
 
 ## 总体判断
 

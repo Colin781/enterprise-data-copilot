@@ -52,3 +52,7 @@ platform:
     event-max-length: 100
     sse-timeout: PT30S
     dispatch-lease: PT30S
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-handlers-package: com.example.copilot.mybatis.typehandler

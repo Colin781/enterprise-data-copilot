@@ -15,7 +15,7 @@ from app.nl2sql.errors import (
     NL2SQLRepairExhaustedError,
     SchemaSelectionError,
 )
-from app.nl2sql.models import AnalysisPlan
+from app.nl2sql.models import AnalysisPlan, TableSelection
 from app.nl2sql.service import NL2SQLService
 from app.nl2sql.table_references import normalize_reported_tables
 from app.query_safety.audit import InMemoryQueryAuditSink
@@ -475,4 +475,34 @@ def test_analysis_plan_requires_exact_sql_output_aliases() -> None:
             summary="Quarterly sales",
             steps=("Aggregate sales by quarter",),
             expected_columns=("quarter (date)", "total_sales"),
+        )
+
+
+@pytest.mark.parametrize(
+    "reported",
+    [
+        ("northwind.orders",),
+        ("orders", "northwind.order_details"),
+    ],
+)
+def test_selection_accepts_allowed_schema_qualified_names(
+    snapshot: SchemaSnapshot, reported: tuple[str, ...]
+) -> None:
+    service, _ = make_service([], CountingExecutor(), CountingEstimator(), InMemoryQueryAuditSink())
+    result = service._validate_selection(
+        TableSelection(tables=reported), snapshot, QueryPolicy.from_snapshot(snapshot)
+    )
+    assert result == tuple(name.removeprefix("northwind.") for name in reported)
+
+
+@pytest.mark.parametrize(
+    "reported", [("public.orders",), ("orders", "northwind.orders"), ("missing_table",)]
+)
+def test_selection_rejects_other_schemas_duplicates_and_unknown_names(
+    snapshot: SchemaSnapshot, reported: tuple[str, ...]
+) -> None:
+    service, _ = make_service([], CountingExecutor(), CountingEstimator(), InMemoryQueryAuditSink())
+    with pytest.raises(SchemaSelectionError):
+        service._validate_selection(
+            TableSelection(tables=reported), snapshot, QueryPolicy.from_snapshot(snapshot)
         )

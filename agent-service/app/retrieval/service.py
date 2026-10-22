@@ -24,6 +24,7 @@ class MetricRetrievalService:
         *,
         repository: MetricKnowledgeRepository,
         embedding_provider: EmbeddingProvider | None = None,
+        reranker: object | None = None,
         cache: RetrievalCache | None = None,
         chunk_max_characters: int = 1_200,
         chunk_overlap_characters: int = 120,
@@ -41,6 +42,7 @@ class MetricRetrievalService:
             raise ValueError("default_limit must be between 1 and 20")
         self._repository = repository
         self._embeddings = embedding_provider or HashingEmbeddingProvider()
+        self._reranker = reranker
         self._cache = cache or RetrievalCache()
         self._chunk_max_characters = chunk_max_characters
         self._chunk_overlap_characters = chunk_overlap_characters
@@ -51,6 +53,15 @@ class MetricRetrievalService:
         self._max_markdown_bytes = max_markdown_bytes
         self._max_pdf_bytes = max_pdf_bytes
         self._max_pdf_pages = max_pdf_pages
+
+    def usage_snapshot(self) -> dict:
+        return {
+            "embedding_input_tokens": getattr(self._embeddings, "input_tokens", None)
+            if getattr(self._embeddings, "usage_known", False)
+            else None,
+            "embedding_requests": getattr(self._embeddings, "requests", 0),
+            "reranker_requests": getattr(self._reranker, "requests", 0),
+        }
 
     def ingest(
         self,
@@ -125,17 +136,22 @@ class MetricRetrievalService:
         candidate_limit = min(100, max(limit * 4, 20))
         lexical = (
             self._repository.lexical_search(tenant_id, normalized_query, candidate_limit)
-            if mode in ("lexical", "hybrid")
+            if mode in ("lexical", "hybrid", "hybrid_rerank")
             else ()
         )
         vector = (
             self._repository.vector_search(
                 tenant_id, self._embeddings.embed((normalized_query,))[0], candidate_limit
             )
-            if mode in ("vector", "hybrid")
+            if mode in ("vector", "hybrid", "hybrid_rerank")
             else ()
         )
-        hits = self._rank(lexical, vector, mode)[:limit]
+        hits = self._rank(lexical, vector, mode)
+        if mode == "hybrid_rerank":
+            if self._reranker is None:
+                raise ValueError("hybrid_rerank requires RAG_RERANKER_PROVIDER")
+            hits = self._reranker.rerank(normalized_query, hits)
+        hits = hits[:limit]
         should_answer = self._has_evidence(hits, mode)
         result = RetrievalResult(
             query=normalized_query,
@@ -200,10 +216,10 @@ class MetricRetrievalService:
     def _has_evidence(self, hits: Sequence[RetrievalHit], mode: RetrievalMode) -> bool:
         if not hits:
             return False
-        if mode in ("lexical", "hybrid") and any(
+        if mode in ("lexical", "hybrid", "hybrid_rerank") and any(
             (hit.lexical_score or 0) >= self._min_lexical_score for hit in hits
         ):
             return True
-        return mode in ("vector", "hybrid") and any(
+        return mode in ("vector", "hybrid", "hybrid_rerank") and any(
             (hit.vector_score or -1) >= self._min_vector_score for hit in hits
         )

@@ -1,0 +1,81 @@
+{
+  "profile": {
+    "embedding": "hashing:64",
+    "reranker": "overlap-test-baseline",
+    "repository": "in-memory; not PostgreSQL performance evidence"
+  },
+  "reports": [
+    {
+      "mode": "lexical",
+      "embedding_input_tokens": null,
+      "embedding_requests": 0,
+      "reranker_requests": 0,
+      "estimated_cost_usd": null,
+      "cases": 24,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "refusal_accuracy": 1.0,
+      "mean_latency_ms": 0.16898595883200565,
+      "p95_latency_ms": 0.21791696781292558,
+      "failures": []
+    },
+    {
+      "mode": "vector",
+      "embedding_input_tokens": null,
+      "embedding_requests": 0,
+      "reranker_requests": 0,
+      "estimated_cost_usd": null,
+      "cases": 24,
+      "recall_at_5": 1.0,
+      "mrr": 0.885,
+      "refusal_accuracy": 1.0,
+      "mean_latency_ms": 0.10736117110354826,
+      "p95_latency_ms": 0.13174995547160506,
+      "failures": [
+        {
+          "id": "r003",
+          "returned": [
+            "retail-metrics-v1.md#折扣金额-discount-amount",
+            "retail-metrics-v1.md#准时发货率-on-time-shipment-rate",
+            "retail-metrics-v1.md#客户销售贡献-customer-contribution",
+            "retail-metrics-v1.md#同比增长率-year-over-year-growth",
+            "retail-metrics-v1.md#平均订单金额-average-order-value"
+          ],
+          "reason": "false_refusal"
+        }
+      ]
+    },
+    {
+      "mode": "hybrid",
+      "embedding_input_tokens": null,
+      "embedding_requests": 0,
+      "reranker_requests": 0,
+      "estimated_cost_usd": null,
+      "cases": 24,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "refusal_accuracy": 1.0,
+      "mean_latency_ms": 0.4884062970328766,
+      "p95_latency_ms": 0.3264160477556288,
+      "failures": []
+    },
+    {
+      "mode": "hybrid_rerank",
+      "embedding_input_tokens": null,
+      "embedding_requests": 0,
+      "reranker_requests": 0,
+      "estimated_cost_usd": null,
+      "cases": 24,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "refusal_accuracy": 1.0,
+      "mean_latency_ms": 0.29669458308489993,
+      "p95_latency_ms": 0.3481669700704515,
+      "failures": []
+    }
+  ],
+  "answer_accuracy": null,
+  "answer_accuracy_note": "retrieval-only run; requires separate human/LLM answer grading",
+  "cost_usd": null,
+  "cost_note": "per-mode estimates require observed usage and explicit provider pricing"
+}

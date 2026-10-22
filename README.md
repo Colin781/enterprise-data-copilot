@@ -1,5 +1,7 @@
 # Enterprise Data Copilot
 
+第 3～10 周岗位路线改造已加入：查询索引与 EXPLAIN 工具、可配置语义 Embedding/重排和四路评测、Neo4j 局部 GraphRAG、只读 MCP、ECharts 关系网络。运行、接口、验证与代码阅读见 [改造交付手册](docs/weeks-3-10-upgrade.md)；新增接口契约见 [Intelligence OpenAPI](contracts/openapi-intelligence.yaml)。
+
 ## 30 秒介绍
 
 面向零售经营分析的、可控且可审计的企业数据与指标知识分析 Agent。
@@ -19,7 +21,8 @@
 
 ```mermaid
 flowchart LR
-    U[Analyst / Browser] -->|JWT + SSE| J[Java Platform API]
+    U[Analyst / Browser] -->|same-origin HTTP + SSE| W[Next.js Web / Server Proxy]
+    W -->|JWT + SSE| J[Java Platform API]
     J -->|tenant / RBAC / job / approval| PDB[(Platform PostgreSQL)]
     J -->|short-lived progress| R[(Redis)]
     J -->|service token + traceparent| P[Python Agent Service]
@@ -35,11 +38,14 @@ flowchart LR
 ```mermaid
 sequenceDiagram
     participant U as Browser
+    participant W as Web Server Proxy
     participant J as Java Platform
     participant P as Python Agent
     participant D as Read-only DB
-    U->>J: POST /api/analysis/jobs
-    J-->>U: 202 + job id + trace id
+    U->>W: POST /api/platform/analysis/jobs
+    W->>J: POST /api/analysis/jobs
+    J-->>W: 202 + job id + trace id
+    W-->>U: 202 + job id + trace id
     J->>P: POST /internal/v1/runs + traceparent
     P->>P: retrieve → plan → generate → guard
     alt safe
@@ -49,7 +55,8 @@ sequenceDiagram
     else rejected or approval
         P-->>J: stable reason code / interrupt
     end
-    J-->>U: replayable SSE events + final state
+    J-->>W: replayable SSE events + final state
+    W-->>U: replayable SSE events + final state
 ```
 
 详细职责和信任边界见 [总体架构](docs/architecture.md) 与 [ADR-0001](docs/adr/0001-java-python-boundary.md)。
@@ -61,12 +68,21 @@ sequenceDiagram
 - 数据访问：只读 PostgreSQL；不支持写入客户数据库。
 - 服务职责：Java 负责身份、租户、权限、任务、审批和审计；Python 负责检索、规划、NL2SQL、安全校验与结果解释。
 - 模型权限：模型不能绕过 SQL AST 规则、数据库只读账号、查询超时和结果上限。
-- 浏览器只访问 Java；Python 内部 API 要求服务令牌和可信身份头。
+- 浏览器仅访问 Web 同源代理，Java 是业务 API 入口；Python 内部 API 要求服务令牌和可信身份头。
 - 演示部署的数据源主机受 allowlist 限制，响应不返回 host、DSN 或 `secret_ref`。
 - 图表只接受固定结构化规范，不执行模型生成的 JavaScript、Python、HTML 或 shell。
 - trace/span/指标和步骤日志只记录 allowlist 元数据、稳定错误码与 SQL 指纹，不记录密钥、问题全文、SQL 参数或业务结果。
 
 ## 项目文档
+
+第一次接手按这个顺序阅读，不必从 P0 一直读到 P12：
+
+1. [当前本地启动手册](docs/current-local-startup-guide.md)：配置 `.env`、选择启动模式、登录和排错。
+2. [全项目代码阅读导航](docs/code-reading-guide.md)：目录分工、跨服务调用链和逐文件阅读顺序。
+3. [Java 平台目录与代码阅读指南](platform-api/README.md)：统一分层框架、普通请求与后台任务。
+4. [总体架构](docs/architecture.md) 和 [开发与验收命令](docs/development.md)：职责边界与日常验证。
+
+下面的 P0～P12 文档记录各阶段当时的实现和验收，不代表当前目录、测试数量或功能仍停留在该阶段。
 
 - [第一阶段小结：P0～P2](docs/milestone-1-foundation-summary.md)
 - [产品需求](docs/product-requirements.md)
@@ -169,6 +185,10 @@ curl -fsS http://localhost:9090/-/ready
 ```
 
 停止时运行 `make stack-down`（保留数据库卷）。若需要三个终端的开发热重载，先停掉完整栈，再运行 `make setup`、`make compose-up`，分别运行 `make dev-platform`、`make dev-agent`、`make dev-web`。不要同时运行两种模式。
+
+从旧 Java 业务模块目录升级后，宿主机开发需要先停止旧 Java 进程，再在项目根目录执行一次 `(cd platform-api && ./mvnw clean)`，清除旧包编译产物；随后照常 `make dev-platform`。完整 Compose 模式直接 `make stack-up` 重建镜像。此次只调整 Java 包布局，不要求重建数据库、删除卷或重新生成令牌。
+
+2026-10-18 已实际验证开发启动与生产 JAR 启动，Java 33 条测试及相关 HTTP 接口检查通过；范围和未复测项见 [Java 启动验收记录](platform-api/README.md#7-本次分层重构的启动验收2026-10-18)。这不等同于本次重跑完整 Web／模型端到端验收。
 
 有效模型 Key 仅在真实模型问题和显式真实模型评测中需要；健康检查、确定性危险问题拒绝与离线评测不调用外部模型。
 

@@ -80,3 +80,7 @@ management:
       percentiles-histogram:
         http.server.requests: true
         copilot.agent.client.duration: true
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-handlers-package: com.example.copilot.mybatis.typehandler

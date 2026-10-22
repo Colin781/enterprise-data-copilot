@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Enterprise Data Copilot Platform API
-  version: 0.1.0
+  version: 0.1.1
   description: Browser-facing API owned by the Java platform service.
 servers:
   - url: http://localhost:8080
@@ -456,6 +456,7 @@ components:
         - version
         - columns
         - rows
+        - result_truncated
         - chart
         - citations
       properties:
@@ -480,7 +481,7 @@ components:
           type: string
           format: date-time
         finished_at:
-          type: string
+          type: [string, "null"]
           format: date-time
         error:
           $ref: "#/components/schemas/ApiError"
@@ -489,14 +490,14 @@ components:
           format: int64
           minimum: 0
         workflow_thread_id:
-          type: string
+          type: [string, "null"]
           maxLength: 64
         generated_sql:
-          type: string
+          type: [string, "null"]
         answer:
-          type: string
+          type: [string, "null"]
         error_code:
-          type: string
+          type: [string, "null"]
           maxLength: 80
         columns:
           type: array
@@ -508,6 +509,9 @@ components:
           items:
             type: object
             additionalProperties: true
+        result_truncated:
+          type: boolean
+          description: Whether the returned rows were truncated by execution limits.
         chart:
           $ref: "#/components/schemas/ChartSpec"
         citations:
@@ -617,7 +621,7 @@ components:
           format: int64
           minimum: 0
         error_code:
-          type: string
+          type: [string, "null"]
           maxLength: 80
         created_at:
           type: string

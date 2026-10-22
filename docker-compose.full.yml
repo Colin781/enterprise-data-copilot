@@ -77,12 +77,30 @@ services:
       OBSERVABILITY_METRICS_ENABLED: ${OBSERVABILITY_METRICS_ENABLED:-true}
       OBSERVABILITY_OTLP_HTTP_ENDPOINT: ${OBSERVABILITY_OTLP_HTTP_ENDPOINT:-}
       LANGGRAPH_STRICT_MSGPACK: ${LANGGRAPH_STRICT_MSGPACK:-true}
+      RAG_EMBEDDING_PROVIDER: ${RAG_EMBEDDING_PROVIDER:-hashing}
+      RAG_VECTOR_SEARCH_MODE: ${RAG_VECTOR_SEARCH_MODE:-exact}
+      RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-64}
+      RAG_EMBEDDING_BASE_URL: ${RAG_EMBEDDING_BASE_URL:-http://host.docker.internal:11434/v1}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-nomic-embed-text}
+      RAG_EMBEDDING_API_KEY: ${RAG_EMBEDDING_API_KEY:-}
+      RAG_RERANKER_PROVIDER: ${RAG_RERANKER_PROVIDER:-none}
+      RAG_RERANKER_URL: ${RAG_RERANKER_URL:-http://host.docker.internal:8001/rerank}
+      RAG_RERANKER_MODEL: ${RAG_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      RAG_RERANKER_API_KEY: ${RAG_RERANKER_API_KEY:-}
+      RAG_PROVIDER_TIMEOUT_SECONDS: ${RAG_PROVIDER_TIMEOUT_SECONDS:-15}
+      RAG_PROVIDER_MAX_ATTEMPTS: ${RAG_PROVIDER_MAX_ATTEMPTS:-2}
+      GRAPH_ENABLED: ${GRAPH_ENABLED:-true}
+      GRAPH_URI: bolt://neo4j:7687
+      GRAPH_USER: neo4j
+      GRAPH_PASSWORD: ${GRAPH_PASSWORD:-change-me-graph-password}
     ports:
       - "${AGENT_SERVICE_HTTP_PORT:-8000}:8000"
     depends_on:
       platform-db:
         condition: service_healthy
       business-db:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     healthcheck:
       test:
@@ -95,6 +113,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 24
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_AUTH: neo4j/${GRAPH_PASSWORD:-change-me-graph-password}
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    volumes:
+      - neo4j-data:/data
+    ports:
+      - "127.0.0.1:${GRAPH_BROWSER_PORT:-7474}:7474"
+      - "127.0.0.1:${GRAPH_BOLT_PORT:-7687}:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
     restart: unless-stopped
 
   web:
@@ -133,3 +171,6 @@ services:
       agent-service:
         condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  neo4j-data:

@@ -9,14 +9,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/data-sources")
@@ -28,6 +25,12 @@ public class DataSourceController {
     public DataSourceController(DataSourceManagementService dataSourceService, CallerIdentity callerIdentity) {
         this.dataSourceService = dataSourceService;
         this.callerIdentity = callerIdentity;
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ANALYST', 'VIEWER')")
+    public DataSourceResource get(@PathVariable("id") UUID id, JwtAuthenticationToken authentication) {
+        return dataSourceService.get(id, callerIdentity.current(authentication));
     }
 
     @PostMapping

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.copilot.mapper.AnalysisJobQueryMapper">
+
+    <resultMap id="jobRowMap"
+               type="com.example.copilot.dto.response.AnalysisJobQueryRow">
+        <id column="id" property="id"/>
+        <result column="question" property="question"/>
+        <result column="status" property="status"/>
+    </resultMap>
+
+    <sql id="jobColumns">
+        id, question, status
+    </sql>
+
+    <select id="findByTenantIdAndId" resultMap="jobRowMap">
+        SELECT
+        <include refid="jobColumns"/>
+        FROM copilot.analysis_jobs
+        WHERE tenant_id = #{tenantId}
+        AND id = #{jobId}
+    </select>
+
+    <select id="search" resultMap="jobRowMap">
+        SELECT
+        <include refid="jobColumns"/>
+        FROM copilot.analysis_jobs
+        <where>
+            tenant_id = #{tenantId}
+
+            <if test="criteria.statuses != null">
+                AND status IN
+                <foreach collection="criteria.statuses"
+                         item="status"
+                         open="("
+                         separator=","
+                         close=")">
+                    #{status}
+                </foreach>
+            </if>
+
+            <if test="criteria.keyword != null">
+                AND question LIKE #{criteria.keywordPattern} ESCAPE '!'
+            </if>
+
+            <if test="criteria.createdFrom != null">
+                AND created_at &gt;= #{criteria.createdFrom}
+            </if>
+
+            <if test="criteria.createdTo != null">
+                AND created_at &lt; #{criteria.createdTo}
+            </if>
+        </where>
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+</mapper>

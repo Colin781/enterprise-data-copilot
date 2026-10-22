@@ -115,6 +115,45 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
     }
 
     @Test
+    void viewerCanReadOwnDataSourceWithoutConnectionSecrets() throws Exception {
+        var viewer = createUser("alpha", "viewer@alpha.test", UserRole.VIEWER);
+
+        var source = dataSourceRepository.save(dataSource(viewer.tenant().getId(), "alpha-source"));
+
+        var token = login("alpha", "viewer@alpha.test");
+
+        mockMvc.perform(get("/api/data-sources/{id}", source.getId()).header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(source.getId().toString()))
+                .andExpect(jsonPath("$.name").value("alpha-source"))
+                .andExpect(jsonPath("$.source_type").value("POSTGRESQL"))
+                .andExpect(jsonPath("$.host").doesNotExist())
+                .andExpect(jsonPath("$.secret_ref").doesNotExist());
+    }
+
+    @Test
+    void administratorCannotReadAnotherTenantsDataSource() throws Exception {
+        createUser("alpha", "admin@alpha.test", UserRole.ADMIN);
+        var beta = createUser("beta", "admin@beta.test", UserRole.ADMIN);
+
+        var betaSource = dataSourceRepository.save(dataSource(beta.tenant().getId(), "beta-source"));
+
+        var alphaToken = login("alpha", "admin@alpha.test");
+
+        mockMvc.perform(get("/api/data-sources/{id}", betaSource.getId()).header("Authorization", bearer(alphaToken)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void dataSourceDetailRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/data-sources/{id}", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"))
+                .andExpect(header().exists("X-Trace-Id"));
+    }
+
+    @Test
     void internalServiceTokenBypassesJwtParsingAndIsStillValidated() throws Exception {
         var jobId = UUID.randomUUID();
         var body =
@@ -473,7 +512,7 @@ class PlatformSecurityIntegrationTest extends PostgresIntegrationTest {
                                 + "WHERE attrelid = 'copilot.metric_chunks'::regclass "
                                 + "AND attname = 'embedding'",
                         String.class))
-                .isEqualTo("vector(64)");
+                .isEqualTo("vector");
         assertThat(jdbcTemplate.queryForObject("SELECT to_regclass('copilot.agent_steps')::text", String.class))
                 .isEqualTo("copilot.agent_steps");
     }

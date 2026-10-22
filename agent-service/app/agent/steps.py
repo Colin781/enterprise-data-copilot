@@ -4,7 +4,9 @@ from time import monotonic_ns
 from typing import Any, Protocol
 
 import httpx
+from langgraph.errors import GraphInterrupt
 
+from app.agent.error_policy import classify_error
 from app.agent.state import AgentState
 from app.observability import NODE_DURATION, NODE_ERRORS, agent_node_span, mark_span_error
 
@@ -137,6 +139,9 @@ def timed_step(
                 max(0, monotonic_ns() - started) / 1_000_000_000
             )
             return update
+        except GraphInterrupt:
+            # A human approval pause is expected control flow, not a failed node.
+            raise
         except Exception as error:
             error_code = getattr(error, "code", error.__class__.__name__.upper())
             sink.record(
@@ -146,7 +151,7 @@ def timed_step(
                     status="FAILED",
                     attempt=attempt,
                     input_summary=input_summary,
-                    output_summary={},
+                    output_summary=classify_error(error),
                     duration_ms=max(0, (monotonic_ns() - started) // 1_000_000),
                     error_code=error_code,
                 )

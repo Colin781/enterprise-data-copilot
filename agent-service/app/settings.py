@@ -113,7 +113,18 @@ class RetrievalSettings(BaseSettings):
         extra="ignore",
     )
 
-    embedding_dimensions: int = Field(default=64, ge=64, le=64)
+    embedding_provider: Literal["hashing", "http"] = "hashing"
+    embedding_dimensions: int = Field(default=64, ge=16, le=2048)
+    embedding_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:11434/v1")
+    embedding_api_key: SecretStr = SecretStr("")
+    embedding_model: str = "nomic-embed-text"
+    vector_search_mode: Literal["exact", "approximate"] = "exact"
+    reranker_provider: Literal["none", "overlap", "http"] = "none"
+    reranker_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8001/rerank")
+    reranker_api_key: SecretStr = SecretStr("")
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    provider_timeout_seconds: float = Field(default=20, gt=0, le=60)
+    provider_max_attempts: int = Field(default=3, ge=1, le=3)
     chunk_max_characters: int = Field(default=1_200, ge=200, le=4_000)
     chunk_overlap_characters: int = Field(default=120, ge=0, le=500)
     result_limit: int = Field(default=5, ge=1, le=20)
@@ -139,8 +150,17 @@ class AgentWorkflowSettings(BaseSettings):
         default=SecretStr("postgresql://copilot:change-me-platform@localhost:5432/copilot_platform")
     )
     platform_api_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8080")
-    max_repairs: int = Field(default=2, ge=2, le=2)
+    max_repairs: int = Field(default=2, ge=0, le=2)
     minimum_confidence: float = Field(default=0.65, ge=0, le=1)
+
+
+class GraphSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="GRAPH_", extra="ignore")
+    enabled: bool = False
+    uri: str = "bolt://localhost:7687"
+    user: str = "neo4j"
+    password: SecretStr = SecretStr("change-me-graph-password")
+    database: str = "neo4j"
 
 
 class ObservabilitySettings(BaseSettings):
