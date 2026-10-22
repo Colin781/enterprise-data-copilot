@@ -75,6 +75,8 @@ sequenceDiagram
 
 ## 项目文档
 
+准备求职学习时先看 [课程 × 代码 × 动手验收](docs/learning/README.md)：包含五门 B 站课程的精确分集清单、逐文件技术对应与学习顺序，明确区分课程覆盖和需要补学的工程内容。
+
 第一次接手按这个顺序阅读，不必从 P0 一直读到 P12：
 
 1. [当前本地启动手册](docs/current-local-startup-guide.md)：配置 `.env`、选择启动模式、登录和排错。
